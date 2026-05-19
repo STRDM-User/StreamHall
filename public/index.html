@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>直播列表</title>
+  <style>
+    :root {
+      --line: rgba(32, 44, 70, 0.13);
+      --text: #182033;
+      --muted: #667085;
+      --blue: #4e7ee8;
+      --mint: #19b8b1;
+      --rose: #f26389;
+      --gold: #f3b33d;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --line: rgba(148, 163, 184, 0.2);
+      --text: #f8fafc;
+      --muted: #aeb8c8;
+      --blue: #93c5fd;
+      --mint: #99f6e4;
+      --rose: #fb7185;
+      --gold: #fde68a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        linear-gradient(135deg, rgba(246, 249, 255, 0.98), rgba(255, 246, 250, 0.92) 50%, rgba(242, 255, 252, 0.96)),
+        linear-gradient(90deg, rgba(78, 126, 232, 0.08), rgba(242, 99, 137, 0.07));
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      overflow-x: hidden;
+    }
+
+    :root[data-theme="dark"] body {
+      background:
+        linear-gradient(135deg, rgba(15, 20, 34, 0.98), rgba(28, 35, 54, 0.94) 52%, rgba(30, 24, 42, 0.98)),
+        linear-gradient(90deg, rgba(25, 184, 177, 0.1), rgba(242, 99, 137, 0.08));
+      color: #d8deea;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      content: "";
+      background-image:
+        linear-gradient(rgba(78, 126, 232, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(242, 99, 137, 0.06) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.72), transparent 78%);
+    }
+
+    .page-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 34px;
+    }
+
+    .site-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 18px 45px rgba(58, 72, 102, 0.12);
+      backdrop-filter: blur(14px);
+    }
+
+    :root[data-theme="dark"] .site-nav,
+    :root[data-theme="dark"] .footer-card,
+    :root[data-theme="dark"] .card {
+      background: rgba(24, 31, 48, 0.88);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24);
+    }
+
+    .site-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 1.05rem;
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .site-brand::before {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      content: "";
+      background: linear-gradient(135deg, var(--mint), var(--rose));
+      box-shadow: 0 0 0 5px rgba(25, 184, 177, 0.12);
+    }
+
+    .site-links {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    #site-nav-links {
+      display: contents;
+    }
+
+    .site-links a,
+    .theme-toggle {
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 7px 12px;
+      color: #344054;
+      background: transparent;
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-color: rgba(78, 126, 232, 0.26);
+      padding: 0;
+      color: #365bd6;
+      background:
+        radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.96), rgba(227, 236, 255, 0.94) 58%, rgba(190, 211, 255, 0.9));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 8px 18px rgba(78, 126, 232, 0.16);
+      font-size: 1.08rem;
+      line-height: 1;
+    }
+
+    .site-links a:hover,
+    .theme-toggle:hover {
+      border-color: rgba(78, 126, 232, 0.22);
+      color: var(--blue);
+      background: rgba(78, 126, 232, 0.07);
+    }
+
+    .theme-toggle:hover {
+      border-color: rgba(78, 126, 232, 0.36);
+      background:
+        radial-gradient(circle at 34% 28%, #fff, rgba(219, 231, 255, 0.98) 58%, rgba(169, 197, 255, 0.94));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        0 10px 22px rgba(78, 126, 232, 0.22);
+    }
+
+    :root[data-theme="dark"] .site-links a,
+    :root[data-theme="dark"] .theme-toggle {
+      color: #d8deea;
+    }
+
+    :root[data-theme="dark"] .theme-toggle {
+      border-color: rgba(253, 230, 138, 0.3);
+      color: #fde68a;
+      background:
+        radial-gradient(circle at 38% 30%, rgba(253, 230, 138, 0.42), rgba(73, 61, 72, 0.9) 58%, rgba(31, 41, 59, 0.98));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 8px 22px rgba(253, 186, 116, 0.14);
+    }
+
+    :root[data-theme="dark"] .theme-toggle:hover {
+      border-color: rgba(253, 230, 138, 0.46);
+      background:
+        radial-gradient(circle at 38% 30%, rgba(254, 240, 138, 0.5), rgba(86, 71, 74, 0.94) 58%, rgba(38, 50, 70, 0.98));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 10px 26px rgba(253, 186, 116, 0.2);
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation-duration: 0.62s;
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      mix-blend-mode: normal;
+    }
+
+    ::view-transition-old(root) {
+      animation-name: theme-hold;
+    }
+
+    ::view-transition-new(root) {
+      animation-name: theme-ripple;
+      clip-path: circle(0 at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%));
+    }
+
+    @keyframes theme-ripple {
+      to {
+        clip-path: circle(150vmax at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%));
+      }
+    }
+
+    @keyframes theme-hold {
+      to {
+        opacity: 1;
+      }
+    }
+
+    .hero-panel {
+      padding: 54px 0 30px;
+    }
+
+    .hero-panel::after {
+      display: block;
+      width: 100%;
+      height: 4px;
+      margin-top: 28px;
+      border-radius: 999px;
+      content: "";
+      background: linear-gradient(90deg, var(--mint), var(--rose), var(--gold), var(--blue));
+    }
+
+    .hero-panel h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: 4rem;
+      font-weight: 900;
+      line-height: 1.05;
+    }
+
+    .hero-subtitle {
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.8;
+    }
+
+    .content-panel {
+      flex: 1 0 auto;
+      padding: 26px 0 12px;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .section-kicker {
+      margin: 0 0 8px;
+      color: var(--rose);
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .section-heading h2 {
+      margin: 0;
+      color: var(--text);
+      font-size: 1.65rem;
+      font-weight: 800;
+    }
+
+    .section-status {
+      border: 1px solid rgba(25, 184, 177, 0.25);
+      border-radius: 999px;
+      padding: 6px 12px;
+      color: #0f766e;
+      background: rgba(25, 184, 177, 0.08);
+      font-size: 0.82rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    :root[data-theme="dark"] .section-status {
+      color: var(--mint);
+      background: rgba(20, 184, 166, 0.12);
+    }
+
+    .stream-switch {
+      position: relative;
+      display: inline-flex;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px;
+      background: rgba(255, 255, 255, 0.72);
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .stream-switch::before {
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      left: 4px;
+      z-index: -1;
+      width: calc((100% - 14px) / 2);
+      border-radius: 999px;
+      content: "";
+      background: var(--blue);
+      box-shadow: 0 8px 18px rgba(78, 126, 232, 0.2);
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s ease;
+    }
+
+    .stream-switch[data-active="ARCHIVE"]::before {
+      transform: translateX(calc(100% + 6px));
+      background: var(--gold);
+      box-shadow: 0 8px 18px rgba(243, 179, 61, 0.2);
+    }
+
+    :root[data-theme="dark"] .stream-switch {
+      background: rgba(15, 23, 42, 0.42);
+    }
+
+    .stream-switch button {
+      border: 0;
+      border-radius: 999px;
+      padding: 7px 16px;
+      color: var(--muted);
+      background: transparent;
+      font: inherit;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: color 0.2s ease, transform 0.2s ease;
+    }
+
+    .stream-switch button.active {
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    #stream-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 20px;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    #stream-list.is-switching {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+
+    .card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 172px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      color: inherit;
+      background: #fff;
+      box-shadow: 0 14px 34px rgba(58, 72, 102, 0.1);
+      text-decoration: none;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .card::before {
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      height: 3px;
+      content: "";
+      background: linear-gradient(90deg, var(--mint), var(--rose), var(--gold));
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(78, 126, 232, 0.28);
+      box-shadow: 0 20px 42px rgba(58, 72, 102, 0.16);
+    }
+
+    .stream-card-header,
+    .stream-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .stream-label,
+    .stream-lock {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .stream-label {
+      color: #be123c;
+      background: rgba(242, 99, 137, 0.12);
+    }
+
+    .stream-label.is-archive {
+      color: #92400e;
+      background: rgba(243, 179, 61, 0.14);
+    }
+
+    .stream-lock {
+      color: #92400e;
+      background: rgba(243, 179, 61, 0.14);
+    }
+
+    .stream-lock:not(.is-open)::before {
+      content: '';
+      display: inline-block;
+      width: 0.9em;
+      height: 1em;
+      background-color: currentColor;
+      -webkit-mask-image: url("data:image/svg+xml,<svg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'><path fill-rule='evenodd' d='M5 9V7a5 5 0 0 1 10 0v2a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2zm8-2v2H7V7a3 3 0 0 1 6 0z' clip-rule='evenodd'/></svg>");
+      mask-image: url("data:image/svg+xml,<svg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'><path fill-rule='evenodd' d='M5 9V7a5 5 0 0 1 10 0v2a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2zm8-2v2H7V7a3 3 0 0 1 6 0z' clip-rule='evenodd'/></svg>");
+      -webkit-mask-size: contain;
+      mask-size: contain;
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+      -webkit-mask-position: center;
+      mask-position: center;
+    }
+
+    .stream-lock.is-open {
+      color: #0f766e;
+      background: rgba(25, 184, 177, 0.12);
+    }
+
+    .stream-card-title {
+      margin: 22px 0 0;
+      color: var(--text);
+      font-size: 1.25rem;
+      font-weight: 800;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .stream-card-footer {
+      margin-top: auto;
+      padding-top: 24px;
+      color: var(--blue);
+      font-weight: 800;
+    }
+
+    .arrow-icon {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      color: #f26389;
+      transition: transform 0.2s ease;
+    }
+
+    .arrow-icon::before {
+      width: 12px;
+      height: 2px;
+      border-radius: 999px;
+      content: "";
+      background: currentColor;
+    }
+
+    .arrow-icon::after {
+      position: absolute;
+      right: 2px;
+      width: 7px;
+      height: 7px;
+      border-top: 2px solid currentColor;
+      border-right: 2px solid currentColor;
+      content: "";
+      transform: rotate(45deg);
+    }
+
+    .card:hover .arrow-icon {
+      transform: translateX(3px);
+    }
+
+    .loader {
+      width: 48px;
+      height: 48px;
+      margin: 72px auto;
+      border: 4px solid rgba(148, 163, 184, 0.35);
+      border-top-color: var(--rose);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .message {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: clamp(220px, 34vh, 380px);
+      margin: 0;
+      text-align: center;
+      color: var(--rose);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .site-footer {
+      flex-shrink: 0;
+      border-top: 1px solid var(--line);
+      margin-top: 34px;
+      padding: 28px 0 0;
+      color: var(--muted);
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .footer-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 14px 34px rgba(58, 72, 102, 0.08);
+      line-height: 1.85;
+    }
+
+    .footer-card h2 {
+      margin: 0 0 10px;
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 800;
+    }
+
+    .footer-card p {
+      margin: 6px 0;
+    }
+
+    .footer-card ul {
+      margin: 8px 0 0;
+      padding-left: 1.2rem;
+    }
+
+    .footer-card li {
+      margin: 5px 0;
+    }
+
+    .footer-card a,
+    .footer-sites a {
+      color: var(--blue);
+    }
+
+    .footer-bottom a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .footer-bottom {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 900px) {
+      #stream-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 768px) {
+      .page-shell {
+        width: min(100% - 24px, 1180px);
+        padding: 18px 0;
+      }
+
+      .site-nav,
+      .section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .site-links {
+        justify-content: flex-start;
+      }
+
+      .hero-panel {
+        padding: 36px 0 24px;
+      }
+
+      .hero-panel h1 {
+        font-size: 2.55rem;
+      }
+
+      #stream-list,
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page-shell">
+    <nav class="site-nav" data-i18n-title="nav.main_aria" aria-label="主导航">
+      <a class="site-brand" id="site-brand" href="/">直播列表</a>
+      <div class="site-links">
+        <span id="site-nav-links"></span>
+        <button id="lang-toggle" class="theme-toggle" type="button" style="font-size:.82rem;font-weight:900;width:auto;padding:0 10px;" data-i18n-title="nav.lang_toggle" aria-label="切换语言" title="切换语言">EN</button>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
+      </div>
+    </nav>
+
+    <header class="hero-panel">
+      <div class="hero-copy">
+        <h1 id="site-title">直播列表</h1>
+        <p id="site-description" class="hero-subtitle"></p>
+      </div>
+    </header>
+
+    <main class="content-panel">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker" id="stream-section-kicker">Live List</p>
+          <h2 id="stream-section-title">当前直播</h2>
+        </div>
+        <div class="stream-switch" data-i18n-title="stream.switch_aria" aria-label="切换直播列表">
+          <button type="button" class="active" data-stream-label="LIVE">🔴</button>
+          <button type="button" data-stream-label="ARCHIVE">🗂️</button>
+        </div>
+      </div>
+
+      <div id="loading-indicator" class="loader"></div>
+      <p id="error-message" class="message hidden"></p>
+      <div id="stream-list"></div>
+    </main>
+
+    <footer class="site-footer">
+      <div id="footer-content" class="footer-grid hidden"></div>
+      <div class="footer-bottom">
+        <p><span id="site-copyright">© 2026 <a id="footer-site-link" href="/">StreamHall</a>. All rights reserved.</span> | Powered by <a href="https://git.stdm.moe/Stardream/StreamHall" target="_blank" rel="noopener noreferrer">StreamHall</a></p>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      const savedTheme = localStorage.getItem('site_theme');
+      if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+    })();
+
+    // ── i18n ──────────────────────────────────────────────────────────
+    var TRANSLATIONS = {
+      zh: {
+        // section-kicker: zh shows English label (mirrored bilingual)
+        'kicker.live':    'Live List',
+        'kicker.archive': 'Archive List',
+        // section headings
+        'section.live': '直播列表',
+        'section.archive': '存档列表',
+        // stream card
+        'card.watch': '点击观看',
+        'card.password': '需要密码',
+        'card.public': '公开',
+        // empty states
+        'empty.live': '当前没有可用的直播',
+        'empty.archive': '当前没有可用的存档',
+        // error
+        'err.load': '加载失败',
+        'err.fetch': '获取直播列表失败',
+        'err.server_error': '服务器内部错误',
+        // nav / aria
+        'nav.brand':        '直播列表',
+        'nav.main_aria':    '主导航',
+        'nav.lang_toggle':  '切换语言',
+        'stream.switch_aria': '切换直播列表',
+        // theme toggle
+        'theme.to_dark': '切换暗黑模式',
+        'theme.to_light': '切换明亮模式',
+        // lang toggle
+        'lang.toggle': '切换语言',
+        'lang.btn_label': 'EN',
+      },
+      en: {
+        // section-kicker: en shows Chinese label (mirrored bilingual)
+        'kicker.live':    '直播列表',
+        'kicker.archive': '存档列表',
+        // section headings
+        'section.live': 'Live List',
+        'section.archive': 'Archive List',
+        // stream card
+        'card.watch': 'Watch now',
+        'card.password': 'Password required',
+        'card.public': 'Public',
+        // empty states
+        'empty.live': 'No live streams available',
+        'empty.archive': 'No archives available',
+        // error
+        'err.load': 'Failed to load',
+        'err.fetch': 'Failed to fetch streams',
+        'err.server_error': 'Internal server error',
+        // nav / aria
+        'nav.brand':        'Streams',
+        'nav.main_aria':    'Main navigation',
+        'nav.lang_toggle':  'Switch language',
+        'stream.switch_aria': 'Switch stream type',
+        // theme toggle
+        'theme.to_dark': 'Switch to dark mode',
+        'theme.to_light': 'Switch to light mode',
+        // lang toggle
+        'lang.toggle': 'Switch language',
+        'lang.btn_label': '中',
+      }
+    };
+
+    var LANG = localStorage.getItem('lang_pref') || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+
+    function t(key) {
+      return (TRANSLATIONS[LANG] && TRANSLATIONS[LANG][key] != null)
+        ? TRANSLATIONS[LANG][key]
+        : (TRANSLATIONS.zh[key] != null ? TRANSLATIONS.zh[key] : key);
+    }
+
+    function applyI18n() {
+      document.querySelectorAll('[data-i18n]').forEach(function(el) {
+        var v = t(el.dataset.i18n);
+        if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && el.type !== 'submit' && el.type !== 'button') {
+          el.placeholder = v;
+        } else {
+          el.textContent = v;
+        }
+      });
+      document.querySelectorAll('[data-i18n-title]').forEach(function(el) {
+        var v = t(el.dataset.i18nTitle);
+        el.title = v;
+        el.setAttribute('aria-label', v);
+      });
+      document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+      document.documentElement.dataset.lang = LANG;
+      var btn = document.getElementById('lang-toggle');
+      if (btn) btn.textContent = t('lang.btn_label');
+    }
+
+    function setLang(lang) {
+      LANG = lang;
+      localStorage.setItem('lang_pref', lang);
+      applyI18n();
+    }
+
+    const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+
+    const settingsCacheKey = 'site_settings_cache';
+    const defaultSiteSettings = {
+      site_title: 'StreamHall',
+      site_description: '',
+      site_description_en: '',
+      site_icon_url: '',
+      site_nav_links: null,
+      site_nav_links_en: null,
+      footer_markdown: '',
+      footer_markdown_en: ''
+    };
+
+    const readCachedSiteSettings = () => {
+      try {
+        const cached = JSON.parse(localStorage.getItem(settingsCacheKey) || 'null');
+        return cached && cached.site_title ? cached : null;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const renderInlineMarkdown = (text) => escapeHtml(text).replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+    );
+
+    const markdownBlocks = (markdown = '') => {
+      const blocks = [];
+      let list = [];
+      const flushList = () => {
+        if (!list.length) return;
+        blocks.push(`<ul>${list.map(item => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</ul>`);
+        list = [];
+      };
+      String(markdown || '').split(/\r?\n/).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          flushList();
+          return;
+        }
+        const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) {
+          flushList();
+          const level = heading[1].length + 1;
+          blocks.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+          return;
+        }
+        const listItem = trimmed.match(/^[-*]\s+(.+)$/);
+        if (listItem) {
+          list.push(listItem[1]);
+          return;
+        }
+        flushList();
+        blocks.push(`<p>${renderInlineMarkdown(trimmed)}</p>`);
+      });
+      flushList();
+      return blocks;
+    };
+
+    const applyFooterMarkdown = (markdown = '') => {
+      const footerContent = document.getElementById('footer-content');
+      const blocks = markdownBlocks(markdown);
+      footerContent.innerHTML = '';
+      if (!blocks.length) {
+        footerContent.classList.add('hidden');
+        return;
+      }
+      footerContent.classList.remove('hidden');
+      footerContent.innerHTML = `<section class="footer-card">${blocks.join('')}</section>`;
+    };
+
+    const parseNavLinks = (value) => {
+      if (Array.isArray(value)) return value;
+      try {
+        const parsed = JSON.parse(value || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    };
+
+    const safeNavUrl = (url = '') => {
+      const text = String(url || '').trim();
+      if (text.startsWith('#') || text.startsWith('/') || /^https?:\/\//i.test(text)) return text;
+      return '#';
+    };
+
+    let _lastSiteSettings = null;
+
+    const applyNavLinks = (value) => {
+      const container = document.getElementById('site-nav-links');
+      const links = value == null
+        ? [{ label: t('nav.brand'), url: '#stream-list' }]
+        : parseNavLinks(value).filter(link => link && link.label && link.url);
+      container.innerHTML = links.map(link => {
+        const href = safeNavUrl(link.url);
+        const external = /^https?:\/\//i.test(href);
+        return `<a href="${escapeHtml(href)}"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${escapeHtml(link.label)}</a>`;
+      }).join('');
+    };
+
+    const applyFooterBrand = (siteTitle) => {
+      const siteLink = document.getElementById('footer-site-link');
+      siteLink.textContent = siteTitle;
+      siteLink.href = window.location.origin || '/';
+      document.getElementById('site-copyright').firstChild.textContent = `© ${new Date().getFullYear()} `;
+    };
+
+    const applySiteIcon = (url = '') => {
+      const iconUrl = String(url || '').trim();
+      let link = document.querySelector('link[rel="icon"]');
+      if (!iconUrl) {
+        if (link) link.remove();
+        return;
+      }
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = iconUrl;
+    };
+
+    const applySiteSettings = (settings = {}, persist = false) => {
+      const merged = { ...defaultSiteSettings, ...settings };
+      _lastSiteSettings = merged;
+      const siteTitle = merged.site_title || defaultSiteSettings.site_title;
+      const siteDescription = LANG === 'en'
+        ? (merged.site_description_en || merged.site_description || '')
+        : (merged.site_description || '');
+      document.title = siteTitle;
+      document.getElementById('site-brand').textContent = siteTitle;
+      document.getElementById('site-title').textContent = siteTitle;
+      document.getElementById('site-description').textContent = siteDescription;
+      applySiteIcon(merged.site_icon_url || '');
+      applyFooterBrand(siteTitle);
+      const navLinksVal = LANG === 'en' && merged.site_nav_links_en != null
+        ? merged.site_nav_links_en
+        : (merged.site_nav_links ?? null);
+      applyNavLinks(navLinksVal);
+      const footerVal = LANG === 'en'
+        ? (merged.footer_markdown_en || merged.footer_markdown || '')
+        : (merged.footer_markdown || '');
+      applyFooterMarkdown(footerVal);
+      if (persist) localStorage.setItem(settingsCacheKey, JSON.stringify(merged));
+    };
+
+    applySiteSettings(readCachedSiteSettings() || defaultSiteSettings);
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      const themeToggle = document.getElementById('theme-toggle');
+      const langToggle = document.getElementById('lang-toggle');
+      const streamList = document.getElementById('stream-list');
+      const loadingIndicator = document.getElementById('loading-indicator');
+      const errorMessage = document.getElementById('error-message');
+      const streamSectionTitle = document.getElementById('stream-section-title');
+      const streamSwitchButtons = Array.from(document.querySelectorAll('.stream-switch button'));
+      let allStreams = [];
+      let activeStreamLabel = localStorage.getItem('home_stream_label') === 'ARCHIVE' ? 'ARCHIVE' : 'LIVE';
+
+      const applyTheme = (theme) => {
+        document.documentElement.dataset.theme = theme;
+        localStorage.setItem('site_theme', theme);
+        const label = theme === 'dark' ? t('theme.to_light') : t('theme.to_dark');
+        themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+        themeToggle.setAttribute('aria-label', label);
+        themeToggle.setAttribute('title', label);
+      };
+
+      const switchThemeWithRipple = (button) => {
+        const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        const rect = button.getBoundingClientRect();
+        document.documentElement.style.setProperty('--theme-ripple-x', `${rect.left + rect.width / 2}px`);
+        document.documentElement.style.setProperty('--theme-ripple-y', `${rect.top + rect.height / 2}px`);
+        if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          applyTheme(nextTheme);
+          return;
+        }
+        document.startViewTransition(() => applyTheme(nextTheme));
+      };
+
+      const savedTheme = localStorage.getItem('site_theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
+      themeToggle.addEventListener('click', () => {
+        switchThemeWithRipple(themeToggle);
+      });
+
+      // lang toggle
+      const updateKicker = () => {
+        const kickerEl = document.getElementById('stream-section-kicker');
+        if (kickerEl) kickerEl.textContent = activeStreamLabel === 'ARCHIVE' ? t('kicker.archive') : t('kicker.live');
+        streamSectionTitle.textContent = activeStreamLabel === 'ARCHIVE' ? t('section.archive') : t('section.live');
+      };
+      applyI18n();
+      updateKicker();
+      langToggle?.addEventListener('click', () => {
+        setLang(LANG === 'zh' ? 'en' : 'zh');
+        applyTheme(document.documentElement.dataset.theme || 'light');
+        if (_lastSiteSettings) applySiteSettings(_lastSiteSettings);
+        updateKicker();
+        renderStreams();
+      });
+
+      const labelTitle = (label) => label === 'ARCHIVE' ? t('section.archive') : t('section.live');
+      const emptyText = (label) => label === 'ARCHIVE' ? t('empty.archive') : t('empty.live');
+      const normalizeLabel = (label) => String(label || 'LIVE').toUpperCase() === 'ARCHIVE' ? 'ARCHIVE' : 'LIVE';
+
+      const labelKicker = (label) => label === 'ARCHIVE' ? t('kicker.archive') : t('kicker.live');
+
+      const renderStreams = () => {
+        streamSectionTitle.textContent = labelTitle(activeStreamLabel);
+        const kickerEl = document.getElementById('stream-section-kicker');
+        if (kickerEl) kickerEl.textContent = labelKicker(activeStreamLabel);
+        document.querySelector('.stream-switch')?.setAttribute('data-active', activeStreamLabel);
+        streamSwitchButtons.forEach(btn => {
+          const active = btn.dataset.streamLabel === activeStreamLabel;
+          btn.classList.toggle('active', active);
+        });
+        const streams = allStreams.filter(stream => normalizeLabel(stream.stream_label) === activeStreamLabel);
+        streamList.innerHTML = '';
+        errorMessage.classList.add('hidden');
+        if (!streams.length) {
+          errorMessage.textContent = emptyText(activeStreamLabel);
+          errorMessage.classList.remove('hidden');
+          return;
+        }
+        streamList.innerHTML = streams.map(stream => {
+          const label = normalizeLabel(stream.stream_label);
+          return `
+            <a href="player.html?id=${encodeURIComponent(stream.id)}" class="card">
+              <div class="stream-card-header">
+                <span class="stream-label ${label === 'ARCHIVE' ? 'is-archive' : ''}">${label}</span>
+                ${stream.has_password
+                  ? `<span class="stream-lock">${t('card.password')}</span>`
+                  : `<span class="stream-lock is-open">${t('card.public')}</span>`}
+              </div>
+              <h2 class="stream-card-title">${escapeHtml(stream.event_name)}</h2>
+              <div class="stream-card-footer">
+                <span>${t('card.watch')}</span>
+                <span class="arrow-icon" aria-hidden="true"></span>
+              </div>
+            </a>
+          `;
+        }).join('');
+      };
+
+      streamSwitchButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const nextLabel = btn.dataset.streamLabel === 'ARCHIVE' ? 'ARCHIVE' : 'LIVE';
+          if (nextLabel === activeStreamLabel) return;
+          activeStreamLabel = nextLabel;
+          localStorage.setItem('home_stream_label', activeStreamLabel);
+          streamList.classList.add('is-switching');
+          window.setTimeout(() => {
+            renderStreams();
+            window.requestAnimationFrame(() => streamList.classList.remove('is-switching'));
+          }, 140);
+        });
+      });
+
+      try {
+        const settingsResponse = await fetch('/api?action=site_settings');
+        if (settingsResponse.ok) {
+          const settingsResult = await settingsResponse.json();
+          if (settingsResult.status === 'success') applySiteSettings(settingsResult.data, true);
+        }
+
+        const response = await fetch('/api?action=public_list');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+
+        if (result.status === 'success') {
+          allStreams = result.data || [];
+          renderStreams();
+        } else {
+          throw new Error(t('err.' + (result.code || '')) || t('err.fetch'));
+        }
+      } catch (error) {
+        errorMessage.textContent = `${t('err.load')}: ${error.message}`;
+        errorMessage.classList.remove('hidden');
+      } finally {
+        loadingIndicator.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+
+</html>

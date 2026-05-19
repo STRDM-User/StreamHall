@@ -1,0 +1,4228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin</title>
+  <script>
+    window.__echartsReady = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';
+      s.onload  = () => resolve(true);
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  </script>
+  <style>
+    :root {
+      --line: rgba(32, 44, 70, 0.13);
+      --text: #182033;
+      --muted: #667085;
+      --blue: #4e7ee8;
+      --mint: #19b8b1;
+      --rose: #f26389;
+      --gold: #f3b33d;
+      --panel: rgba(255, 255, 255, 0.9);
+      --input: rgba(255, 255, 255, 0.92);
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --line: rgba(148, 163, 184, 0.2);
+      --text: #f8fafc;
+      --muted: #aeb8c8;
+      --blue: #93c5fd;
+      --mint: #99f6e4;
+      --panel: rgba(24, 31, 48, 0.88);
+      --input: rgba(30, 41, 59, 0.92);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        linear-gradient(135deg, rgba(246, 249, 255, 0.98), rgba(255, 246, 250, 0.92) 50%, rgba(242, 255, 252, 0.96)),
+        linear-gradient(90deg, rgba(78, 126, 232, 0.08), rgba(242, 99, 137, 0.07));
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    }
+
+    :root[data-theme="dark"] body {
+      background:
+        linear-gradient(135deg, rgba(15, 20, 34, 0.98), rgba(28, 35, 54, 0.94) 52%, rgba(30, 24, 42, 0.98)),
+        linear-gradient(90deg, rgba(25, 184, 177, 0.1), rgba(242, 99, 137, 0.08));
+      color: #d8deea;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .page-shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 34px;
+    }
+
+    .site-nav,
+    .admin-menu,
+    .admin-section,
+    .modal-card,
+    .stream-row {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 14px 34px rgba(58, 72, 102, 0.08);
+      backdrop-filter: blur(14px);
+    }
+
+    :root[data-theme="dark"] .site-nav,
+    :root[data-theme="dark"] .admin-menu,
+    :root[data-theme="dark"] .admin-section,
+    :root[data-theme="dark"] .modal-card,
+    :root[data-theme="dark"] .stream-row {
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24);
+    }
+
+    .site-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 12px 14px;
+    }
+
+    .site-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 1.05rem;
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .site-brand::before {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      content: "";
+      background: linear-gradient(135deg, var(--mint), var(--rose));
+      box-shadow: 0 0 0 5px rgba(25, 184, 177, 0.12);
+    }
+
+    .site-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .hero-panel {
+      padding: 54px 0 30px;
+    }
+
+    .hero-panel::after {
+      display: block;
+      width: 100%;
+      height: 4px;
+      margin-top: 28px;
+      border-radius: 999px;
+      content: "";
+      background: linear-gradient(90deg, var(--mint), var(--rose), var(--gold), var(--blue));
+    }
+
+    .hero-panel h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: 4rem;
+      font-weight: 900;
+      line-height: 1.05;
+    }
+
+    .hero-panel p {
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.8;
+    }
+
+    .admin-layout {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      align-items: start;
+      gap: 18px;
+    }
+
+    .admin-menu {
+      position: sticky;
+      top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px;
+    }
+
+    .admin-menu-btn {
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 12px 13px;
+      color: var(--muted);
+      background: transparent;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .admin-menu-btn:hover {
+      border-color: rgba(78, 126, 232, 0.22);
+      color: var(--blue);
+      background: rgba(78, 126, 232, 0.07);
+    }
+
+    .admin-menu-btn.active {
+      color: #fff;
+      background: #4e7ee8;
+      box-shadow: 0 10px 22px rgba(78, 126, 232, 0.22);
+    }
+
+    .admin-menu-group { display:flex; flex-direction:column; }
+    .admin-menu-group-btn { border:1px solid transparent; border-radius:6px; padding:12px 13px; color:var(--muted); background:transparent; text-align:left; white-space:nowrap; cursor:pointer; font-size:inherit; width:100%; display:flex; align-items:center; justify-content:space-between; }
+    .admin-menu-group-btn:hover { border-color:rgba(78,126,232,.22); color:var(--blue); background:rgba(78,126,232,.07); }
+    .admin-menu-group.in-view .admin-menu-group-btn { border-color:rgba(78,126,232,.22); color:var(--blue); }
+    .group-arrow { font-size:1rem; opacity:.8; transition:transform .2s ease; flex-shrink:0; }
+    .admin-menu-group.open .group-arrow { transform:rotate(180deg); }
+    .admin-sub-menu { display:none; }
+    .admin-menu-group.open .admin-sub-menu { display:flex; flex-direction:column; gap:6px; padding-top:4px; }
+    .admin-sub-btn { border:1px solid transparent; border-radius:6px; padding:12px 13px 12px 24px; background:transparent; color:var(--muted); font-size:inherit; text-align:left; cursor:pointer; width:100%; white-space:nowrap; }
+    .admin-sub-btn:hover { border-color:rgba(78,126,232,.22); color:var(--blue); background:rgba(78,126,232,.07); }
+    .admin-sub-btn.active { color:#fff; background:#4e7ee8; box-shadow:0 6px 16px rgba(78,126,232,.2); }
+
+    .admin-content {
+      min-width: 0;
+    }
+
+    .admin-view {
+      display: none;
+      margin-bottom: 0;
+    }
+
+    .admin-view.active {
+      display: block;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(246, 249, 255, 0.84);
+      backdrop-filter: blur(5px);
+    }
+
+    :root[data-theme="dark"] .modal-overlay {
+      background: rgba(0, 0, 0, 0.72);
+    }
+
+    .modal-card {
+      width: min(100%, 400px);
+      padding: 28px;
+    }
+
+    .auth-card {
+      text-align: center;
+    }
+
+    .auth-card h2 {
+      margin: 0;
+    }
+
+    .auth-card .hint {
+      margin: 12px 0 0;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    h2,
+    h3 {
+      color: var(--text);
+    }
+
+    .section-kicker {
+      margin: 0 0 8px;
+      color: var(--rose);
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .admin-section > h2 {
+      margin-top: 0;
+    }
+
+    .admin-section {
+      margin-bottom: 28px;
+      padding: 24px;
+    }
+
+    .security-panel {
+      margin-top: 24px;
+      border-top: 1px solid var(--line);
+      padding-top: 22px;
+    }
+
+    .security-panel h3 {
+      margin: 0 0 8px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 11px;
+      color: var(--text);
+      background: var(--input);
+      font: inherit;
+      outline: none;
+    }
+
+    textarea {
+      resize: vertical;
+    }
+
+    .link-row {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr 1.8fr 1.4fr 1.6fr auto;
+      gap: 8px;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+
+    .nav-link-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.7fr) minmax(180px, 1.5fr) auto;
+      gap: 8px;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+
+    .url-field {
+      min-width: 0;
+    }
+
+    .stream-check-status,
+    .stream-live-state {
+      min-height: 18px;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+
+    .stream-live-state {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 9px;
+      background: rgba(100, 116, 139, 0.08);
+    }
+
+    .stream-check-status.is-checking,
+    .stream-live-state.is-checking {
+      color: var(--blue);
+      background: rgba(78, 126, 232, 0.08);
+    }
+
+    .stream-check-status.is-online,
+    .stream-live-state.is-online {
+      color: #0f766e;
+      background: rgba(25, 184, 177, 0.1);
+    }
+
+    .stream-check-status.is-offline,
+    .stream-live-state.is-offline {
+      color: #dc2626;
+      background: rgba(220, 38, 38, 0.08);
+    }
+
+    :root[data-theme="dark"] .stream-check-status.is-online,
+    :root[data-theme="dark"] .stream-live-state.is-online {
+      color: var(--mint);
+    }
+
+    :root[data-theme="dark"] .stream-check-status.is-offline,
+    :root[data-theme="dark"] .stream-live-state.is-offline {
+      color: #fb7185;
+    }
+
+    .obs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .obs-copy-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .obs-route-panel {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .obs-route-form {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin-top: 12px;
+    }
+
+    .obs-route-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .obs-route-card {
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.48);
+    }
+
+    :root[data-theme="dark"] .obs-route-card {
+      background: rgba(15, 23, 42, 0.34);
+    }
+
+    .obs-route-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--text);
+      font-weight: 900;
+      overflow-wrap: anywhere;
+    }
+
+    .obs-route-links {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .telegram-toggle-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .check-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .check-line input {
+      width: auto;
+      margin: 0;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    button,
+    .button-link {
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: #fff;
+      background: #64748b;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      text-decoration: none;
+      transition: filter 0.2s ease, transform 0.2s ease;
+    }
+
+    button:hover,
+    .button-link:hover {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(78, 126, 232, 0.26);
+      border-radius: 999px;
+      color: #365bd6;
+      background:
+        radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.96), rgba(227, 236, 255, 0.94) 58%, rgba(190, 211, 255, 0.9));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 8px 18px rgba(78, 126, 232, 0.16);
+      padding: 0;
+      font-size: 1.08rem;
+      line-height: 1;
+    }
+
+    .theme-toggle:hover {
+      border-color: rgba(78, 126, 232, 0.36);
+      background:
+        radial-gradient(circle at 34% 28%, #fff, rgba(219, 231, 255, 0.98) 58%, rgba(169, 197, 255, 0.94));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        0 10px 22px rgba(78, 126, 232, 0.22);
+    }
+
+    :root[data-theme="dark"] .theme-toggle {
+      border-color: rgba(253, 230, 138, 0.3);
+      color: #fde68a;
+      background:
+        radial-gradient(circle at 38% 30%, rgba(253, 230, 138, 0.42), rgba(73, 61, 72, 0.9) 58%, rgba(31, 41, 59, 0.98));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 8px 22px rgba(253, 186, 116, 0.14);
+    }
+
+    :root[data-theme="dark"] .theme-toggle:hover {
+      border-color: rgba(253, 230, 138, 0.46);
+      background:
+        radial-gradient(circle at 38% 30%, rgba(254, 240, 138, 0.5), rgba(86, 71, 74, 0.94) 58%, rgba(38, 50, 70, 0.98));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 10px 26px rgba(253, 186, 116, 0.2);
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation-duration: 0.62s;
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      mix-blend-mode: normal;
+    }
+
+    ::view-transition-old(root) {
+      animation-name: theme-hold;
+    }
+
+    ::view-transition-new(root) {
+      animation-name: theme-ripple;
+      clip-path: circle(0 at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%));
+    }
+
+    @keyframes theme-ripple {
+      to {
+        clip-path: circle(150vmax at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%));
+      }
+    }
+
+    @keyframes theme-hold {
+      to {
+        opacity: 1;
+      }
+    }
+
+    .btn-primary {
+      background: #4e7ee8;
+    }
+
+    .btn-danger {
+      background: #dc2626;
+    }
+
+    .btn-success {
+      background: #16a34a;
+    }
+
+    .btn-warning {
+      background: #b45309;
+    }
+
+    .btn-secondary {
+      background: #64748b;
+    }
+
+    #admin-stream-list {
+      position: relative;
+      overflow: visible;
+    }
+
+    .stream-list-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin: 12px 0 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    :root[data-theme="dark"] .stream-list-toolbar {
+      background: rgba(15, 23, 42, 0.42);
+    }
+
+    .stream-list-filters {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.32fr) minmax(180px, 0.42fr) auto;
+      gap: 10px;
+      margin: 16px 0 10px;
+    }
+
+    .stream-list-filters input,
+    .stream-list-filters select {
+      height: 42px;
+    }
+
+    .stream-list-filters button {
+      height: 42px;
+      white-space: nowrap;
+    }
+
+    .stream-list-count,
+    .page-info {
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .page-size-control,
+    .pagination-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .page-size-control label {
+      display: inline-flex;
+      align-items: center;
+      align-self: stretch;
+      margin: 0;
+      line-height: 1;
+    }
+
+    .page-size-control select {
+      width: auto;
+      min-width: 86px;
+      padding: 8px 30px 8px 10px;
+    }
+
+    .pagination-control button {
+      padding: 8px 11px;
+    }
+
+    .stream-row {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) 260px;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      margin-bottom: 12px;
+      overflow: visible;
+    }
+
+    .stream-row.menu-open {
+      z-index: 40;
+    }
+
+    .stream-main {
+      min-width: 0;
+    }
+
+    .stream-name {
+      color: var(--text);
+      font-weight: 900;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .stream-meta {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .stream-actions {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 0;
+      min-width: 0;
+    }
+
+    .stream-actions button,
+    .more-btn {
+      padding-right: 10px;
+      padding-left: 10px;
+      white-space: nowrap;
+    }
+
+    .action-menu {
+      position: relative;
+    }
+
+    .action-menu[open] {
+      z-index: 41;
+    }
+
+    .more-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 6px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+      color: #fff;
+      background: #64748b;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      list-style: none;
+      transition: filter 0.2s ease, transform 0.2s ease;
+    }
+
+    .more-btn::-webkit-details-marker {
+      display: none;
+    }
+
+    .action-menu[open] .more-btn,
+    .more-btn:hover {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+    }
+
+    .action-menu-panel {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 42;
+      display: grid;
+      width: 168px;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--panel);
+      box-shadow: 0 18px 40px rgba(58, 72, 102, 0.18);
+    }
+
+    .action-menu-panel button {
+      width: 100%;
+      padding: 9px 10px;
+      text-align: left;
+    }
+
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      margin-left: 6px;
+      padding: 2px 8px;
+      color: #fff;
+      background: #be123c;
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+
+    .badge-key {
+      background: #b45309;
+    }
+
+    .badge-tg {
+      background: #0f766e;
+    }
+
+    .badge-closed {
+      background: #64748b;
+    }
+
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .status {
+      margin-top: 8px;
+      color: #16a34a;
+      font-size: 0.9rem;
+    }
+
+    .status.error {
+      color: #dc2626;
+    }
+
+    @media (max-width: 900px) {
+      .form-grid,
+      .link-row,
+      .nav-link-row,
+      .obs-grid,
+      .telegram-toggle-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .admin-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .admin-menu {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(118px, 1fr));
+        overflow-x: auto;
+      }
+
+      .admin-menu-btn {
+        text-align: center;
+      }
+      .admin-menu-group-btn { justify-content:center; }
+      .admin-sub-btn { text-align:center; padding-left:13px; }
+
+      .stream-row {
+        align-items: flex-start;
+        grid-template-columns: auto 1fr;
+      }
+      .stream-row .stream-actions {
+        grid-column: 1 / -1;
+      }
+
+      .stream-actions {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        width: 100%;
+      }
+
+      .stream-list-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .stream-list-filters {
+        grid-template-columns: 1fr;
+      }
+
+      .page-size-control,
+      .pagination-control {
+        justify-content: space-between;
+        width: 100%;
+      }
+
+      .obs-route-form,
+      .obs-route-links {
+        grid-template-columns: 1fr;
+      }
+
+      .action-menu-panel {
+        right: auto;
+        left: 0;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .page-shell {
+        width: min(100% - 24px, 1180px);
+        padding: 18px 0;
+      }
+
+      .site-nav {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .hero-panel {
+        padding: 36px 0 24px;
+      }
+
+      .hero-panel h1 {
+        font-size: 2.55rem;
+      }
+    }
+
+    /* ── Dashboard / Stats ───────────────────────────────────────── */
+    .dash-card-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+    @media(max-width:900px) { .dash-card-grid { grid-template-columns:repeat(2,1fr); } }
+    .dash-card { border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:16px 18px; backdrop-filter:blur(14px); }
+    :root[data-theme="dark"] .dash-card { box-shadow:0 10px 26px rgba(0,0,0,.2); }
+    .dash-card-label { font-size:.75rem; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .dash-card-value { font-size:2.1rem; font-weight:900; line-height:1.1; margin:4px 0 2px; }
+    .dash-card-sub { font-size:.75rem; color:var(--muted); }
+    .dash-accent-mint .dash-card-value { color:var(--mint); }
+    .dash-accent-blue .dash-card-value { color:var(--blue); }
+    .dash-accent-rose .dash-card-value { color:var(--rose); }
+    .dash-accent-gold .dash-card-value { color:var(--gold); }
+    .dash-two-col { display:grid; grid-template-columns:240px minmax(0,1fr); gap:14px; margin-bottom:20px; align-items:start; }
+    @media(max-width:768px) { .dash-two-col { grid-template-columns:1fr; } }
+    .dash-hbar-list { display:flex; flex-direction:column; gap:10px; margin-top:8px; }
+    .dash-hbar-row { display:flex; align-items:center; gap:8px; }
+    .dash-hbar-icon { width:18px; text-align:center; font-size:.9rem; flex-shrink:0; }
+    .dash-hbar-lbl { width:46px; font-size:.78rem; color:var(--muted); font-weight:700; flex-shrink:0; }
+    .dash-hbar-track { flex:1; height:9px; background:rgba(100,116,139,.12); border-radius:999px; overflow:hidden; }
+    .dash-hbar-fill { height:100%; border-radius:999px; transition:width .5s cubic-bezier(.22,1,.36,1); }
+    .dash-hbar-pct { width:34px; text-align:right; font-size:.78rem; font-weight:800; color:var(--muted); flex-shrink:0; }
+    .dash-range-tabs { display:flex; gap:5px; flex-wrap:wrap; }
+    .dash-range-btn { border:1px solid var(--line); border-radius:5px; padding:4px 10px; color:var(--muted); background:transparent; font-size:.78rem; font-weight:800; cursor:pointer; box-shadow:none; transform:none !important; }
+    .dash-range-btn:hover { color:var(--blue); border-color:rgba(78,126,232,.3); background:rgba(78,126,232,.06); filter:none; }
+    .dash-range-btn.active { color:#fff; background:var(--blue); border-color:transparent; }
+    .dash-bar-chart { display:flex; align-items:flex-end; gap:2px; height:110px; padding-bottom:3px; }
+    .dash-bar-col-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; position:relative; }
+    .dash-bar-col { width:100%; min-height:2px; border-radius:3px 3px 0 0; background:var(--blue); opacity:.75; transition:height .4s cubic-bezier(.22,1,.36,1); cursor:default; }
+    .dash-bar-col:hover { opacity:1; }
+    .dash-bar-col-wrap:hover .dash-bar-tip { opacity:1; transform:translateX(-50%) translateY(0); }
+    .dash-bar-tip { position:absolute; bottom:calc(100% + 4px); left:50%; transform:translateX(-50%) translateY(4px); background:rgba(24,32,51,.92); color:#fff; font-size:.68rem; font-weight:800; padding:2px 6px; border-radius:4px; white-space:nowrap; opacity:0; transition:opacity .15s,transform .15s; pointer-events:none; z-index:10; }
+    .dash-bar-axis { display:flex; gap:2px; margin-top:4px; }
+    .dash-bar-axis-lbl { flex:1; text-align:center; font-size:.58rem; color:var(--muted); overflow:visible; white-space:nowrap; }
+    .dash-table { width:100%; border-collapse:collapse; font-size:.86rem; }
+    .dash-table th { padding:7px 9px; text-align:left; color:var(--muted); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--line); white-space:nowrap; }
+    .dash-table td { padding:10px 9px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    .dash-table tr:last-child td { border-bottom:none; }
+    .dash-table tr:hover td { background:rgba(78,126,232,.04); }
+    .dash-table th[data-sort-col] { cursor:pointer; user-select:none; }
+    .dash-table th[data-sort-col]:hover { color:var(--fg); }
+    .dash-table th[data-sort-col]:not(.sort-asc):not(.sort-desc)::after { content:' ↕'; opacity:.28; }
+    .dash-table th.sort-asc::after  { content:' ↑'; opacity:.7; }
+    .dash-table th.sort-desc::after { content:' ↓'; opacity:.7; }
+    .dash-td-name { font-weight:700; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dash-td-name-link { cursor:pointer; }
+    .dash-td-name-link:hover { color:var(--blue); text-decoration:underline; text-underline-offset:3px; }
+    .dash-td-num { text-align:right; font-weight:800; white-space:nowrap; }
+    .dash-td-online { color:var(--mint); }
+    .dash-td-bar { display:flex; align-items:center; gap:7px; }
+    .dash-td-bar-num { font-weight:800; min-width:28px; text-align:right; }
+    .dash-td-bar-track { flex:1; min-width:44px; height:5px; background:rgba(100,116,139,.14); border-radius:999px; overflow:hidden; }
+    .dash-td-bar-fill { height:100%; border-radius:999px; background:var(--blue); opacity:.7; }
+    .dash-dev-badges { display:flex; gap:3px; flex-wrap:wrap; }
+    .dash-dev-badge { font-size:.67rem; font-weight:800; padding:2px 5px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:rgba(100,116,139,.08); white-space:nowrap; }
+    .dash-dev-badge.mobile { color:var(--rose); background:rgba(242,99,137,.08); border-color:rgba(242,99,137,.2); }
+    .dash-dev-badge.desktop { color:var(--blue); background:rgba(78,126,232,.08); border-color:rgba(78,126,232,.2); }
+    .dash-dev-badge.tablet { color:var(--gold); background:rgba(243,179,61,.08); border-color:rgba(243,179,61,.2); }
+    .dash-muted { color:var(--muted); font-size:.8rem; }
+    .dash-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+    .dash-refresh-info { font-size:.8rem; color:var(--muted); }
+    .dash-countdown { font-weight:800; color:var(--blue); }
+    .modal-card-wide { width:min(100%,clamp(640px,80vw,1080px)); max-height:90vh; overflow-y:auto; padding:26px; }
+    .stream-stat-summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:14px 0 18px; }
+    @media(max-width:600px) { .stream-stat-summary-grid { grid-template-columns:repeat(2,1fr); } }
+    .stream-stat-mini-card { border:1px solid var(--line); border-radius:7px; padding:12px 14px; }
+    .stream-stat-mini-lbl { font-size:.72rem; font-weight:800; color:var(--muted); text-transform:uppercase; }
+    .stream-stat-mini-val { font-size:1.55rem; font-weight:900; margin:3px 0 1px; }
+    .recent-sessions-list { font-size:.83rem; }
+    .recent-session-row { padding:10px 0; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:4px; }
+    .recent-session-row:last-child { border-bottom:none; }
+    .rsr-top { display:flex; align-items:center; gap:7px; min-width:0; }
+    .rsr-bot { display:flex; align-items:center; gap:10px; padding-left:2px; }
+    .rsr-ip { font-family:monospace; font-size:.79rem; color:var(--fg); font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+    .rsr-time { font-size:.75rem; color:var(--muted); white-space:nowrap; flex-shrink:0; }
+    .rsr-geo { font-size:.75rem; color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+    .rsr-dur { font-size:.75rem; color:var(--muted); white-space:nowrap; flex-shrink:0; }
+    .browser-badge { font-size:.64rem; font-weight:800; padding:1px 6px; border-radius:999px; border:1px solid var(--line); white-space:nowrap; flex-shrink:0; }
+    .browser-badge.chrome  { color:#34a853; background:rgba(52,168,83,.09); border-color:rgba(52,168,83,.3); }
+    .browser-badge.edge    { color:var(--blue); background:rgba(78,126,232,.09); border-color:rgba(78,126,232,.3); }
+    .browser-badge.safari  { color:var(--gold); background:rgba(243,179,61,.09); border-color:rgba(243,179,61,.3); }
+    .browser-badge.firefox { color:#ff7139; background:rgba(255,113,57,.09); border-color:rgba(255,113,57,.3); }
+    .browser-badge.opera   { color:var(--rose); background:rgba(242,99,137,.09); border-color:rgba(242,99,137,.3); }
+    .browser-badge.other   { color:var(--muted); background:rgba(100,116,139,.09); border-color:var(--line); }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.2} }
+    .live-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:currentColor; animation:pulse-dot 1.2s ease infinite; flex-shrink:0; }
+    .live-dot.offline { animation:none; opacity:.5; }
+    .live-badge { display:inline-flex; align-items:center; gap:6px; padding:3px 10px 3px 8px; border-radius:999px; font-size:.72rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase; border:1px solid transparent; transition:color .25s,background .25s,border-color .25s; white-space:nowrap; }
+    .live-badge[data-state="live"]       { color:var(--mint); background:rgba(52,211,153,.1); border-color:rgba(52,211,153,.28); }
+    .live-badge[data-state="error"]      { color:var(--muted); background:rgba(100,116,139,.07); border-color:var(--line); }
+    .live-badge[data-state="connecting"] { color:var(--muted); background:rgba(100,116,139,.07); border-color:var(--line); }
+    .stream-group-header { padding:6px 4px 4px; font-size:.72rem; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-top:10px; }
+    .stream-group-header:first-child { margin-top:0; }
+    .drag-handle { cursor:grab; color:var(--muted); font-size:1.1rem; padding:0 6px 0 2px; user-select:none; flex-shrink:0; opacity:.45; transition:opacity .15s; }
+    .drag-handle:hover { opacity:.9; }
+    .drag-handle:active { cursor:grabbing; }
+    .stream-row.drag-over { outline:2px solid var(--blue); outline-offset:-2px; border-radius:6px; }
+    .stream-row.dragging { opacity:.35; }
+    .modal-close-btn { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; padding:2px 6px; line-height:1; box-shadow:none; transform:none !important; }
+    .modal-close-btn:hover { color:var(--text); filter:none; }
+    .geo-section { border:1px solid var(--line); border-radius:8px; background:var(--panel); backdrop-filter:blur(14px); padding:20px 22px; margin-top:20px; }
+    .geo-section-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+    .geo-section-title { font-weight:900; }
+    .geo-map-canvas { width:100%; height:320px; }
+    .geo-country-list { display:flex; flex-direction:column; gap:5px; margin-top:12px; }
+    .geo-country-row { display:grid; grid-template-columns:1fr auto 110px; align-items:center; gap:8px; font-size:.82rem; }
+    .geo-bar-track { height:5px; background:rgba(100,116,139,.12); border-radius:999px; overflow:hidden; }
+    .geo-bar-fill  { height:100%; border-radius:999px; background:var(--blue); opacity:.75; }
+    .sessions-pagination { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .sessions-pagination .page-info { font-size:.82rem; color:var(--muted); font-weight:800; }
+  </style>
+</head>
+
+<body>
+  <div id="auth-loading" class="modal-overlay">
+    <div class="modal-card auth-card">
+      <h2 data-i18n="loading.auth">正在进入后台</h2>
+      <p class="hint" data-i18n="loading.auth_hint">正在验证登录状态...</p>
+    </div>
+  </div>
+
+  <div id="password-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 data-i18n="login.title">管理员登录</h2>
+        <button class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
+      </div>
+      <form id="password-form">
+        <input type="password" id="password-input" placeholder="请输入密码" data-i18n="login.placeholder" required>
+        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 14px;" data-i18n="login.submit">登 录</button>
+        <p id="password-error" class="status error hidden" data-i18n="login.error">密码错误！</p>
+      </form>
+    </div>
+  </div>
+
+  <div id="admin-panel" class="hidden page-shell">
+    <nav class="site-nav" aria-label="Admin navigation">
+      <a class="site-brand" id="admin-site-brand" href="/">StreamHall</a>
+      <div class="site-actions">
+        <a class="button-link btn-secondary" href="/" data-i18n="nav.back">返回首页</a>
+        <button id="logout-btn" class="btn-secondary" data-i18n="nav.logout">退出登录</button>
+        <button id="lang-toggle" class="theme-toggle" type="button" style="font-size:.82rem;font-weight:900;width:auto;padding:0 10px;" aria-label="切换语言" title="切换语言">EN</button>
+        <button class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
+      </div>
+    </nav>
+
+    <header class="hero-panel">
+      <h1 data-i18n="hero.title">直播管理</h1>
+      <p id="admin-hero-desc">维护 StreamHall 资料库的直播入口、播放源和访问控制。</p>
+    </header>
+
+    <div class="admin-layout">
+      <aside class="admin-menu" aria-label="Admin sidebar menu">
+        <button type="button" class="admin-menu-btn active" data-admin-view-target="dashboard" data-i18n="menu.dashboard">数据看板</button>
+        <div class="admin-menu-group open" id="records-group">
+          <button type="button" class="admin-menu-group-btn" id="records-group-toggle"><span data-i18n="menu.streams">直播列表</span> <span class="group-arrow">▾</span></button>
+          <div class="admin-sub-menu">
+            <button type="button" class="admin-sub-btn" data-stream-label="live">LIVE</button>
+            <button type="button" class="admin-sub-btn" data-stream-label="archive">ARCHIVE</button>
+          </div>
+        </div>
+        <button type="button" class="admin-menu-btn" data-admin-view-target="obs" data-i18n="menu.obs">直播推流</button>
+        <button type="button" class="admin-menu-btn" data-admin-view-target="telegram" data-i18n="menu.telegram">TG 推送</button>
+        <button type="button" class="admin-menu-btn" data-admin-view-target="site" data-i18n="menu.site">网站设置</button>
+      </aside>
+
+      <main class="admin-content">
+    <div class="admin-section admin-view" data-admin-view="site">
+      <p class="section-kicker" data-i18n="kicker.site_settings">Site Settings</p>
+      <h2 data-i18n="section.site_settings">网站设置</h2>
+      <form id="site-settings-form">
+        <div class="form-grid">
+          <div>
+            <label data-i18n="form.site_title">网站标题</label>
+            <input type="text" id="site-title-input" maxlength="80" required>
+          </div>
+          <div>
+            <label data-i18n="form.site_desc">网站简介</label>
+            <textarea id="site-description-input" rows="3" maxlength="300" data-i18n-placeholder="ph.site_desc"></textarea>
+          </div>
+          <div>
+            <label data-i18n="form.site_icon">网站 Icon URL</label>
+            <input type="text" id="site-icon-url" maxlength="500" placeholder="/favicon.ico 或 https://example.com/favicon.png" data-i18n="ph.site_icon">
+          </div>
+          <div>
+            <label data-i18n="form.site_url">网站公开访问地址</label>
+            <input type="url" id="site-public-base-url" placeholder="自动使用当前后台地址" data-i18n="ph.site_url">
+          </div>
+        </div>
+        <div style="margin-top: 18px;">
+          <label data-i18n="form.nav_links">首页菜单栏链接</label>
+          <div id="site-nav-links-container"></div>
+          <button type="button" id="site-add-nav-link" class="btn-success" data-i18n="btn.add_nav_link">+ 添加菜单链接</button>
+          <p class="hint" data-i18n="hint.nav_links">留空则不显示菜单链接。支持站内锚点如 #stream-list，或完整 http/https 链接。</p>
+        </div>
+        <div style="margin-top: 18px;">
+          <label data-i18n="form.footer">页脚内容 Markdown</label>
+          <textarea id="site-footer-markdown" rows="8" maxlength="5000" placeholder="支持标题、段落、列表和链接。留空则首页不显示页脚内容卡片。" data-i18n="ph.footer"></textarea>
+          <p class="hint" data-i18n="hint.footer_example">示例：## 联系方式&#10;- [项目主页](https://example.com)</p>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn-primary" data-i18n="btn.save_site">保存网站设置</button>
+        </div>
+        <p id="site-settings-status" class="status hidden"></p>
+      </form>
+      <div class="security-panel">
+        <h3 data-i18n="h3.security">安全设置</h3>
+        <p class="hint" data-i18n="hint.pw_change">修改后台登录密码后，当前会话会自动退出。</p>
+        <form id="admin-password-form">
+          <div class="form-grid">
+            <div>
+              <label data-i18n="form.current_pw">当前密码</label>
+              <input type="password" id="admin-current-password" autocomplete="current-password" required>
+            </div>
+            <div>
+              <label data-i18n="form.new_pw">新密码</label>
+              <input type="password" id="admin-new-password" autocomplete="new-password" minlength="10" required>
+            </div>
+            <div>
+              <label data-i18n="form.confirm_pw">确认新密码</label>
+              <input type="password" id="admin-confirm-password" autocomplete="new-password" minlength="10" required>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn-warning" data-i18n="btn.update_pw">更新后台密码</button>
+          </div>
+          <p id="admin-password-status" class="status hidden"></p>
+        </form>
+      </div>
+      <div class="security-panel" id="api-keys-panel">
+        <h3 data-i18n="h3.api_keys">API 密钥</h3>
+        <p class="hint" data-i18n="hint.api_keys">用于程序化访问管理接口。请求时携带 <code>Authorization: Bearer &lt;token&gt;</code> 请求头或 <code>?api_key=&lt;token&gt;</code> 参数。密钥只在创建时显示一次。</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-end;">
+          <div style="flex:1;">
+            <label data-i18n="form.api_key_label">密钥备注</label>
+            <input type="text" id="api-key-label-input" maxlength="80" data-i18n-placeholder="ph.api_key_label">
+          </div>
+          <button type="button" class="btn-primary" id="api-key-create-btn" data-i18n="btn.create_api_key">生成密钥</button>
+        </div>
+        <div id="api-key-new-token" class="hidden" style="background:var(--panel);border:1.5px solid var(--mint);border-radius:7px;padding:12px 14px;margin-bottom:12px;">
+          <div style="font-size:.78rem;color:var(--mint);font-weight:800;margin-bottom:6px;" data-i18n="api.new_token_hint">请复制并妥善保管——密钥不会再次显示</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <code id="api-key-new-token-value" style="flex:1;word-break:break-all;font-size:.82rem;"></code>
+            <button type="button" id="api-key-copy-btn" class="btn-primary" style="white-space:nowrap;" data-i18n="api.copy">复制</button>
+          </div>
+        </div>
+        <div id="api-keys-list"></div>
+        <p id="api-keys-status" class="status hidden"></p>
+      </div>
+    </div>
+
+    <div class="admin-section admin-view" data-admin-view="telegram">
+      <p class="section-kicker" data-i18n="kicker.telegram">Telegram Bot</p>
+      <h2 data-i18n="section.telegram">TG Bot 推送</h2>
+      <p class="hint" data-i18n="hint.tg_config">配置 Bot Token 和接收方 ID 后，可在检测到开播或关播时自动发送消息。</p>
+      <form id="telegram-settings-form">
+        <div class="form-grid">
+          <div>
+            <label>Bot Token</label>
+            <input type="password" id="telegram-bot-token" autocomplete="off" placeholder="123456:ABC-DEF...">
+          </div>
+          <div>
+            <label data-i18n="form.tg_chat_id">群组或用户 ID</label>
+            <input type="text" id="telegram-chat-id" placeholder="-1001234567890">
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px;margin-top:20px;">
+          <div>
+            <div style="font-weight:900;font-size:.88rem;margin-bottom:10px;display:flex;align-items:center;gap:6px;">🔴 <span data-i18n="tg.live_section">直播</span> <span data-i18n="tg.live_label" style="font-size:.75rem;color:var(--muted);font-weight:700;">LIVE</span></div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="border:1px solid var(--line);border-radius:8px;padding:16px 18px;">
+                <label class="check-line" style="margin-bottom:10px;">
+                  <input type="checkbox" id="telegram-live-notify-start">
+                  <span style="font-weight:700;" data-i18n="tg.live_start">开播时推送</span>
+                </label>
+                <label style="font-size:.8rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;" data-i18n="tg.template">消息模板</label>
+                <textarea id="telegram-live-start-template" rows="3"></textarea>
+              </div>
+              <div style="border:1px solid var(--line);border-radius:8px;padding:16px 18px;">
+                <label class="check-line" style="margin-bottom:10px;">
+                  <input type="checkbox" id="telegram-live-notify-stop">
+                  <span style="font-weight:700;" data-i18n="tg.live_stop">关播时推送</span>
+                </label>
+                <label style="font-size:.8rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;" data-i18n="tg.template">消息模板</label>
+                <textarea id="telegram-live-stop-template" rows="3"></textarea>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div style="font-weight:900;font-size:.88rem;margin-bottom:10px;display:flex;align-items:center;gap:6px;">🗂️ <span data-i18n="tg.archive_section">存档</span> <span data-i18n="tg.archive_label" style="font-size:.75rem;color:var(--muted);font-weight:700;">ARCHIVE</span></div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="border:1px solid var(--line);border-radius:8px;padding:16px 18px;">
+                <label class="check-line" style="margin-bottom:10px;">
+                  <input type="checkbox" id="telegram-archive-notify-start">
+                  <span style="font-weight:700;" data-i18n="tg.archive_start">上架时推送</span>
+                </label>
+                <label style="font-size:.8rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;" data-i18n="tg.template">消息模板</label>
+                <textarea id="telegram-archive-start-template" rows="3"></textarea>
+              </div>
+              <div style="border:1px solid var(--line);border-radius:8px;padding:16px 18px;">
+                <label class="check-line" style="margin-bottom:10px;">
+                  <input type="checkbox" id="telegram-archive-notify-stop">
+                  <span style="font-weight:700;" data-i18n="tg.archive_stop">下架时推送</span>
+                </label>
+                <label style="font-size:.8rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;" data-i18n="tg.template">消息模板</label>
+                <textarea id="telegram-archive-stop-template" rows="3"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:10px;" data-i18n="hint.tg_vars">可用变量：{title}、{url}、{site_title}、{time}、{status}、{stream_id}、{public_id}、{link_name}、{source_url} &nbsp;·&nbsp; 支持 HTML</p>
+        <div class="actions">
+          <button type="submit" class="btn-primary" data-i18n="btn.save_tg">保存 TG 设置</button>
+          <button type="button" id="telegram-test-btn" class="btn-secondary" data-i18n="btn.tg_test">发送测试消息</button>
+        </div>
+        <p id="telegram-status" class="status hidden"></p>
+      </form>
+    </div>
+
+    <div class="admin-section admin-view" data-admin-view="obs">
+      <p class="section-kicker" data-i18n="kicker.obs">Stream Setup</p>
+      <h2 data-i18n="section.obs">推流配置</h2>
+      <p class="hint" data-i18n="hint.obs_rtmp">推流端使用 RTMP 推流到 NAS，播放器使用 SRS 输出的 HLS 或 FLV 地址。</p>
+      <div class="form-grid">
+        <div>
+          <label data-i18n="form.obs_key">串流密钥</label>
+          <input type="text" id="obs-stream-key" value="livestream">
+        </div>
+        <div>
+          <label data-i18n="form.obs_host">RTMP 推流主机/IP</label>
+          <input type="text" id="obs-rtmp-host" placeholder="例如 live-rtmp.stdm.moe 或 live-rtmp.stdm.moe:1935" data-i18n="ph.obs_host">
+        </div>
+        <div>
+          <label data-i18n="form.obs_playback">HLS/FLV 公开访问地址</label>
+          <input type="url" id="obs-playback-origin" placeholder="例如 https://live.example.com" data-i18n="ph.obs_playback">
+        </div>
+        <div>
+          <label data-i18n="form.obs_server">RTMP 服务器</label>
+          <div class="obs-copy-row">
+            <input type="text" id="obs-server-url" readonly onclick="this.select()">
+            <button type="button" class="btn-secondary obs-copy-btn" data-copy-target="obs-server-url" data-i18n="btn.copy">复制</button>
+          </div>
+        </div>
+      </div>
+      <div class="obs-grid">
+        <div>
+          <label data-i18n="form.obs_key_disp">串流密钥</label>
+          <div class="obs-copy-row">
+            <input type="text" id="obs-stream-key-display" readonly onclick="this.select()">
+            <button type="button" class="btn-secondary obs-copy-btn" data-copy-target="obs-stream-key-display" data-i18n="btn.copy">复制</button>
+          </div>
+        </div>
+        <div>
+          <label data-i18n="form.obs_hls">HLS 播放地址</label>
+          <div class="obs-copy-row">
+            <input type="text" id="obs-hls-url" readonly onclick="this.select()">
+            <button type="button" class="btn-secondary obs-copy-btn" data-copy-target="obs-hls-url" data-i18n="btn.copy">复制</button>
+          </div>
+        </div>
+        <div>
+          <label data-i18n="form.obs_flv">FLV 播放地址</label>
+          <div class="obs-copy-row">
+            <input type="text" id="obs-flv-url" readonly onclick="this.select()">
+            <button type="button" class="btn-secondary obs-copy-btn" data-copy-target="obs-flv-url" data-i18n="btn.copy">复制</button>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" id="use-obs-hls-btn" class="btn-success" data-i18n="btn.use_obs_hls">填入 HLS 到直播表单</button>
+        <button type="button" id="use-obs-flv-btn" class="btn-secondary" data-i18n="btn.use_obs_flv">填入 FLV 到直播表单</button>
+      </div>
+      <div class="obs-route-panel">
+        <h3 data-i18n="h3.obs_routes">隐藏播放地址映射</h3>
+        <p class="hint" data-i18n="hint.obs_routes">新增自定义推流码后，系统会生成不可反推的公开 HLS/FLV 地址。推流端仍使用真实推流码推流。</p>
+        <div class="obs-route-form">
+          <div>
+            <label data-i18n="form.obs_route_key">新增推流码</label>
+            <input type="text" id="obs-route-key" placeholder="例如 my-live-001" data-i18n="ph.obs_route_key">
+          </div>
+          <button type="button" id="obs-route-add-btn" class="btn-primary" data-i18n="btn.gen_route">生成映射</button>
+        </div>
+        <div id="obs-route-list" class="obs-route-list"></div>
+      </div>
+      <p id="obs-status" class="status hidden"></p>
+    </div>
+
+    <div class="admin-section admin-view" data-admin-view="records">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:18px;">
+        <div>
+          <p class="section-kicker" data-i18n="kicker.stream_records">Stream Records</p>
+          <h2 style="margin:0;" data-i18n="section.stream_records">已录入的直播</h2>
+        </div>
+        <button type="button" id="add-stream-btn" class="btn-primary" style="white-space:nowrap;flex-shrink:0;" data-i18n="btn.add_stream">+ 添加</button>
+      </div>
+      <div class="stream-list-filters" aria-label="Stream list filters">
+        <input type="search" id="admin-stream-search" placeholder="搜索直播名 / ID / 源地址" data-i18n="ph.search">
+        <select id="admin-stream-filter">
+          <option value="all" data-i18n="filter.all">无筛选</option>
+          <option value="enabled" data-i18n="filter.enabled">已开启</option>
+          <option value="disabled" data-i18n="filter.disabled">已关闭</option>
+          <option value="public" data-i18n="filter.public">公开</option>
+          <option value="password" data-i18n="filter.password">密码</option>
+          <option value="hidden" data-i18n="filter.hidden">隐藏</option>
+          <option value="telegram" data-i18n="filter.telegram">TG 推送</option>
+          <option value="key">KeyOverride</option>
+        </select>
+        <select id="admin-stream-sort">
+          <option value="default" data-i18n="sort.default">默认排序</option>
+          <option value="created_desc" data-i18n="sort.newest">最新创建</option>
+          <option value="updated_desc" data-i18n="sort.updated">最近更新</option>
+          <option value="name_asc" data-i18n="sort.name">名称 A-Z</option>
+          <option value="links_desc" data-i18n="sort.links">源数量多到少</option>
+        </select>
+        <button type="button" id="admin-stream-reset" class="btn-secondary" data-i18n="btn.reset_filter">清空</button>
+      </div>
+      <div class="stream-list-toolbar" aria-label="Stream list pagination">
+        <div class="page-size-control">
+          <span id="admin-stream-count" class="stream-list-count">共 0 条</span>
+          <label for="admin-page-size" data-i18n="streams.per_page">每页</label>
+          <select id="admin-page-size">
+            <option value="5" data-i18n="pgsz.5">5 条</option>
+            <option value="10" data-i18n="pgsz.10">10 条</option>
+            <option value="20" data-i18n="pgsz.20">20 条</option>
+            <option value="30" data-i18n="pgsz.30">30 条</option>
+            <option value="40" data-i18n="pgsz.40">40 条</option>
+            <option value="50" data-i18n="pgsz.50">50 条</option>
+          </select>
+        </div>
+        <div class="pagination-control">
+          <button type="button" id="admin-prev-page" class="btn-secondary" data-i18n="page.prev">上一页</button>
+          <span id="admin-page-info" class="page-info">第 1 / 1 页</span>
+          <button type="button" id="admin-next-page" class="btn-secondary" data-i18n="page.next">下一页</button>
+        </div>
+      </div>
+      <div id="admin-stream-list"></div>
+    </div>
+
+    <div class="admin-section admin-view active" data-admin-view="dashboard">
+      <p class="section-kicker" data-i18n="kicker.analytics">Analytics</p>
+      <h2 style="margin-top:0;margin-bottom:18px;" data-i18n="section.analytics">数据看板</h2>
+      <div class="dash-toolbar">
+        <span id="dash-live-indicator" class="live-badge" data-state="connecting">连接中...</span>
+        <button type="button" id="dash-export-btn" class="btn-success" data-i18n="dash.export">⬇ 导出 CSV</button>
+      </div>
+      <div class="dash-card-grid">
+        <div class="dash-card dash-accent-mint">
+          <div class="dash-card-label" data-i18n="dash.online">当前在线</div>
+          <div class="dash-card-value" id="dash-online">—</div>
+          <div class="dash-card-sub" data-i18n="dash.online_sub">45s 内活跃</div>
+        </div>
+        <div class="dash-card dash-accent-blue">
+          <div class="dash-card-label" data-i18n="dash.today">今日观看</div>
+          <div class="dash-card-value" id="dash-today">—</div>
+          <div class="dash-card-sub" data-i18n="dash.today_sub">今日新增会话</div>
+        </div>
+        <div class="dash-card dash-accent-rose">
+          <div class="dash-card-label" data-i18n="dash.total_hist">历史总量</div>
+          <div class="dash-card-value" id="dash-total">—</div>
+          <div class="dash-card-sub" data-i18n="dash.total_sub">所有观看会话</div>
+        </div>
+        <div class="dash-card dash-accent-gold">
+          <div class="dash-card-label" data-i18n="dash.unique">独立访客</div>
+          <div class="dash-card-value" id="dash-unique">—</div>
+          <div class="dash-card-sub" data-i18n="dash.unique_sub">去重 Visitor ID</div>
+        </div>
+      </div>
+      <div class="dash-two-col">
+        <div class="admin-section" style="margin-bottom:0;padding:18px 20px;">
+          <p class="section-kicker" style="margin-bottom:4px;" data-i18n="kicker.device">Device</p>
+          <div style="font-weight:900;margin-bottom:10px;" data-i18n="section.device">设备分布</div>
+          <div class="dash-hbar-list">
+            <div class="dash-hbar-row"><span class="dash-hbar-icon">💻</span><span class="dash-hbar-lbl" data-i18n="device.desktop">桌面端</span><div class="dash-hbar-track"><div class="dash-hbar-fill" id="dh-desktop" style="width:0%;background:var(--blue)"></div></div><span class="dash-hbar-pct" id="dh-desktop-pct">—</span></div>
+            <div class="dash-hbar-row"><span class="dash-hbar-icon">📱</span><span class="dash-hbar-lbl" data-i18n="device.mobile">移动端</span><div class="dash-hbar-track"><div class="dash-hbar-fill" id="dh-mobile" style="width:0%;background:var(--mint)"></div></div><span class="dash-hbar-pct" id="dh-mobile-pct">—</span></div>
+            <div class="dash-hbar-row"><span class="dash-hbar-icon">📋</span><span class="dash-hbar-lbl" data-i18n="device.tablet">平板端</span><div class="dash-hbar-track"><div class="dash-hbar-fill" id="dh-tablet" style="width:0%;background:var(--gold)"></div></div><span class="dash-hbar-pct" id="dh-tablet-pct">—</span></div>
+          </div>
+        </div>
+        <div class="admin-section" style="margin-bottom:0;padding:18px 20px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+            <div>
+              <p class="section-kicker" style="margin-bottom:2px;" data-i18n="kicker.timeseries">Timeseries</p>
+              <div style="font-weight:900;" id="dash-chart-title" data-i18n="section.timeseries">时间分布</div>
+            </div>
+            <div class="dash-range-tabs" id="dash-range-tabs">
+              <button type="button" class="dash-range-btn active" data-range="today" data-i18n="range.today">今日</button>
+              <button type="button" class="dash-range-btn" data-range="7d" data-i18n="range.7d">近 7 天</button>
+              <button type="button" class="dash-range-btn" data-range="30d" data-i18n="range.30d">近 30 天</button>
+            </div>
+          </div>
+          <div class="dash-bar-chart" id="dash-bar-chart"></div>
+          <div class="dash-bar-axis" id="dash-bar-axis"></div>
+        </div>
+      </div>
+      <div class="dash-two-col" style="margin-top:14px;">
+        <div class="admin-section" style="margin-bottom:0;padding:18px 20px;">
+          <p class="section-kicker" style="margin-bottom:4px;" data-i18n="kicker.browser">Browser</p>
+          <div style="font-weight:900;margin-bottom:10px;" data-i18n="section.browser">浏览器分布</div>
+          <div class="dash-hbar-list" id="dash-browser-list"><div style="color:var(--muted);font-size:.82rem;" data-i18n="status.loading">加载中...</div></div>
+        </div>
+        <div class="admin-section" style="margin-bottom:0;padding:18px 20px;">
+          <p class="section-kicker" style="margin-bottom:4px;" data-i18n="kicker.os">OS</p>
+          <div style="font-weight:900;margin-bottom:10px;" data-i18n="section.os">操作系统分布</div>
+          <div class="dash-hbar-list" id="dash-os-list"><div style="color:var(--muted);font-size:.82rem;" data-i18n="status.loading">加载中...</div></div>
+        </div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:8px;background:var(--panel);backdrop-filter:blur(14px);padding:20px 22px;">
+        <div style="font-weight:900;margin-bottom:14px;" data-i18n="dash.stream_detail">直播统计明细</div>
+        <div style="overflow-x:auto;">
+          <table class="dash-table">
+            <thead><tr>
+              <th data-sort-col="event_name" data-i18n="table.stream_name">直播名称</th>
+              <th style="text-align:right" data-sort-col="online" data-i18n="table.online">在线</th>
+              <th style="text-align:right" data-sort-col="today_views" data-i18n="table.today">今日</th>
+              <th data-sort-col="total_views" data-i18n="table.total">总计</th>
+              <th style="text-align:right" data-sort-col="unique_visitors" data-i18n="table.unique">独立访客</th>
+              <th style="text-align:right" data-sort-col="avg_duration" data-i18n="table.avg_dur">均时长</th>
+              <th data-i18n="table.device">设备</th>
+              <th style="text-align:right" data-sort-col="last_seen_at" data-i18n="table.last_active">最后活跃</th>
+            </tr></thead>
+            <tbody id="dash-streams-tbody">
+              <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;" data-i18n="table.empty">点击「数据看板」后加载</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="geo-section">
+        <div class="geo-section-head">
+          <div class="geo-section-title" data-i18n="geo.title">地理分布</div>
+          <div class="dash-range-tabs" id="dash-geo-range">
+            <button class="dash-range-btn" data-range="today" data-i18n="range.today">今日</button>
+            <button class="dash-range-btn active" data-range="30d" data-i18n="range.30d">近 30 天</button>
+            <button class="dash-range-btn" data-range="all" data-i18n="range.all">全部</button>
+          </div>
+        </div>
+        <div class="geo-map-canvas" id="dash-geo-map"></div>
+        <div class="geo-country-list" id="dash-geo-list"></div>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const savedTheme = localStorage.getItem('site_theme');
+      if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+    })();
+
+    // ── i18n ──────────────────────────────────────────────────────────
+    var TRANSLATIONS = {
+      zh: {
+        // section-kickers: zh shows English (existing design), en shows Chinese (mirrored)
+        'kicker.site_settings': 'Site Settings',
+        'kicker.telegram':      'Telegram Bot',
+        'kicker.obs':           'Stream Setup',
+        'kicker.stream_records':'Stream Records',
+        'kicker.analytics':     'Analytics',
+        'kicker.device':        'Device',
+        'kicker.timeseries':    'Timeseries',
+        'kicker.browser':       'Browser',
+        'kicker.os':            'OS',
+        // section headings
+        'section.site_settings': '网站设置',
+        'section.telegram':      'TG Bot 推送',
+        'section.obs':           '推流配置',
+        'section.stream_records':'已录入的直播',
+        'section.analytics':     '数据看板',
+        'section.device':        '设备分布',
+        'section.timeseries':    '时间分布',
+        'section.browser':       '浏览器分布',
+        'section.os':            '操作系统分布',
+        // nav
+        'nav.back':          '返回首页',
+        'nav.logout':        '退出登录',
+        'nav.default_label': '直播列表',
+        // hero
+        'hero.title':        '直播管理',
+        // admin page
+        'admin.title_suffix': '直播管理后台',
+        'admin.hero_desc':    '维护 {site} 资料库的直播入口、播放源和访问控制。',
+        // menu
+        'menu.dashboard': '数据看板',
+        'menu.streams':   '直播列表',
+        'menu.obs':       '推流配置',
+        'menu.telegram':  'TG 推送',
+        'menu.site':      '网站设置',
+        // loading / login
+        'loading.auth':       '正在进入后台',
+        'loading.auth_hint':  '正在验证登录状态...',
+        'login.title':        '管理员登录',
+        'login.placeholder':  '请输入密码',
+        'login.submit':       '登 录',
+        'login.error':        '密码错误！',
+        // dashboard cards
+        'dash.online':      '当前在线',
+        'dash.online_sub':  '45s 内活跃',
+        'dash.today':       '今日观看',
+        'dash.today_sub':   '今日新增会话',
+        'dash.total_hist':  '历史总量',
+        'dash.total_sub':   '所有观看会话',
+        'dash.unique':      '独立访客',
+        'dash.unique_sub':  '去重 Visitor ID',
+        'dash.export':      '⬇ 导出 CSV',
+        'dash.exporting':   '导出中...',
+        'dash.stream_detail': '直播统计明细',
+        // device labels
+        'device.desktop': '桌面端',
+        'device.mobile':  '移动端',
+        'device.tablet':  '平板端',
+        // range buttons
+        'range.today': '今日',
+        'range.7d':    '近 7 天',
+        'range.30d':   '近 30 天',
+        'range.all':   '全部',
+        'range.7d_short':  '7天',
+        'range.30d_short': '30天',
+        // chart titles (JS-rendered)
+        'chart.today': '今日观看趋势（每小时）',
+        'chart.7d':    '近 7 天观看趋势',
+        'chart.30d':   '近 30 天观看趋势',
+        'chart.unit':  '次',
+        // table headers
+        'table.stream_name': '直播名称',
+        'table.online':      '在线',
+        'table.today':       '今日',
+        'table.total':       '总计',
+        'table.unique':      '独立访客',
+        'table.avg_dur':     '均时长',
+        'table.device':      '设备',
+        'table.last_active': '最后活跃',
+        'table.no_data':     '暂无观看数据',
+        'table.empty':       '点击「数据看板」后加载',
+        'table.deleted':     '已删除',
+        // geo
+        'geo.title':   '地理分布',
+        'geo.no_data': '暂无地理数据',
+        // stat modal
+        'stat.connecting': '连接中...',
+        'stat.loading':    '加载中...',
+        'stat.no_records': '暂无记录',
+        'stat.online':     '当前在线',
+        'stat.today':      '今日观看',
+        'stat.total':      '历史总量',
+        'stat.unique':     '独立访客',
+        'stat.device':     '设备分布',
+        'stat.timeseries': '时间分布',
+        'stat.browser':    '浏览器分布',
+        'stat.os':         '操作系统分布',
+        'stat.geo':        '地理分布',
+        'stat.sessions':   '最近会话',
+        'stat.title':      '直播统计',
+        // pagination
+        'page.prev':    '上一页',
+        'page.next':    '下一页',
+        'page.page_of': '第 {cur} / {total} 页',
+        'page.total':   '共 {n} 条',
+        // session sort
+        'sort.last_seen':  '最后活跃',
+        'sort.started_at': '开始时间',
+        'sort.duration':   '时长',
+        'sort.device':     '设备',
+        'sort.browser':    '浏览器',
+        'sort.ip':         'IP',
+        // stream list
+        'streams.per_page': '每页',
+        'streams.showing':  '显示 {shown} / 共 {total} 条',
+        'streams.no_match': '没有匹配的直播',
+        // live indicator
+        'live.live':       '实时',
+        'live.disconnected':'已断开',
+        // hbar empty
+        'hbar.no_data': '暂无数据',
+        // session
+        'sess.watching': '观看中',
+        'sess.dur':      '时长',
+        'sess.online':   '在线',
+        // editor
+        'editor.add_title': '新增直播',
+        'editor.edit_title':'编辑直播',
+        // lang
+        'lang.btn_label': 'EN',
+        // actions
+        'action.disable': '停用',
+        'action.enable':  '启用',
+        // status
+        'status.loading': '加载中...',
+        // relative time
+        'rel.just_now':  '刚刚',
+        'rel.min_ago':   '{n}min 前',
+        'rel.hour_ago':  '{n}h 前',
+        'rel.day_ago':   '{n}天前',
+        // session detail
+        'sess.lt1min':   '< 1分钟',
+        // stream list live stats
+        'ss.live_stat':  '在线 {a} · 今日 {b} · 总 {c}',
+        // stream action buttons
+        'action.stats':     '统计',
+        'action.copy_link': '复制链接',
+        'action.delete':    '删除',
+        'action.push':      '推送',
+        'action.push_on':   '关闭推送',
+        'action.push_off':  '加入推送',
+        'action.more':      '更多',
+        // form labels
+        'form.site_title':  '网站标题',
+        'form.site_desc':   '网站简介',
+        'form.site_icon':   '网站 Icon URL',
+        'form.site_url':    '网站公开访问地址',
+        'form.nav_links':   '首页菜单栏链接',
+        'form.footer':      '页脚内容 Markdown',
+        'form.current_pw':  '当前密码',
+        'form.new_pw':      '新密码',
+        'form.confirm_pw':  '确认新密码',
+        'form.tg_chat_id':  '群组或用户 ID',
+        'form.obs_key':     '串流密钥',
+        'form.obs_host':    'RTMP 推流主机/IP',
+        'form.obs_playback':'HLS/FLV 公开访问地址',
+        'form.obs_server':  'RTMP 服务器',
+        'form.obs_key_disp':'串流密钥',
+        'form.obs_hls':     'HLS 播放地址',
+        'form.obs_flv':     'FLV 播放地址',
+        'form.obs_route_key':'新增推流码',
+        'form.stream_name': '直播名称',
+        'form.stream_pw':   '访问密码 (留空则公开)',
+        'form.stream_type': '直播类型',
+        'form.hide_home':   '不在主页显示',
+        // section headings
+        'h3.security':      '安全设置',
+        'h3.api_keys':      'API 密钥',
+        'hint.api_keys':    '用于程序化访问管理接口。请求时携带 Authorization: Bearer <token> 请求头或 ?api_key=<token> 参数。密钥只在创建时显示一次。',
+        'form.api_key_label': '密钥备注',
+        'ph.api_key_label': '备注（可选）',
+        'btn.create_api_key': '生成密钥',
+        'api.new_token_hint': '请复制并妥善保管——密钥不会再次显示',
+        'api.copy':         '复制',
+        'api.copied':       '已复制',
+        'api.revoke':       '撤销',
+        'api.never_used':   '从未使用',
+        'api.last_used':    '最后使用：',
+        'api.no_keys':      '暂无 API 密钥',
+        'api.confirm_revoke': '确定要撤销这个密钥吗？撤销后无法恢复。',
+        'h3.obs_routes':    '隐藏播放地址映射',
+        'h3.links':         '视角配置',
+        // buttons
+        'btn.add_nav_link': '+ 添加菜单链接',
+        'btn.save_site':    '保存网站设置',
+        'btn.update_pw':    '更新后台密码',
+        'btn.save_tg':      '保存 TG 设置',
+        'btn.tg_test':      '发送测试消息',
+        'btn.copy':         '复制',
+        'btn.use_obs_hls':  '填入 HLS 到直播表单',
+        'btn.use_obs_flv':  '填入 FLV 到直播表单',
+        'btn.gen_route':    '生成映射',
+        'btn.add_stream':   '+ 添加',
+        'btn.reset_filter': '清空',
+        'btn.add_link':     '+ 添加视角',
+        'btn.save':         '保 存',
+        'btn.cancel':       '取 消',
+        'btn.delete':       '删除',
+        'btn.copy_hls':     '复制 HLS',
+        'btn.copy_flv':     '复制 FLV',
+        'btn.use_hls':      '填入 HLS',
+        'btn.use_flv':      '填入 FLV',
+        'btn.open':         '打开',
+        'btn.edit':         '编辑',
+        // placeholders
+        'ph.site_desc':     '中文简介（可留空）',
+        'ph.site_icon':     '/favicon.ico 或 https://example.com/favicon.png',
+        'ph.site_url':      '自动使用当前后台地址',
+        'ph.footer':        '支持标题、段落、列表和链接。留空则首页不显示页脚内容卡片。',
+        'ph.obs_host':      '例如 live-rtmp.stdm.moe 或 live-rtmp.stdm.moe:1935',
+        'ph.obs_playback':  '例如 https://live.example.com',
+        'ph.obs_route_key': '例如 my-live-001',
+        'ph.search':        '搜索直播名 / ID / 源地址',
+        'ph.nav_label':     '菜单名',
+        'ph.nav_url':       '#stream-list 或 https://example.com',
+        'ph.link_name':     '视角名',
+        'ph.link_url':      '链接 (m3u8/flv/mpd)',
+        'ph.key_aes':       'AES-128 Key Hex，可多行: main-video=hex',
+        'ph.clearkey':      'ClearKey 信息，如 {"kid":"key"}',
+        // hints
+        'hint.nav_links':   '留空则不显示菜单链接。支持站内锚点如 #stream-list，或完整 http/https 链接。',
+        'hint.pw_change':   '修改后台登录密码后，当前会话会自动退出。',
+        'hint.tg_config':   '配置 Bot Token 和接收方 ID 后，可在检测到开播或关播时自动发送消息。',
+        'hint.tg_vars':     '可用变量：{title}、{url}、{site_title}、{time}、{status}、{stream_id}、{public_id}、{link_name}、{source_url} &nbsp;·&nbsp; 支持 HTML',
+        'hint.obs_rtmp':    '推流端使用 RTMP 推流到 NAS，播放器使用 SRS 输出的 HLS 或 FLV 地址。',
+        'hint.obs_routes':  '新增自定义推流码后，系统会生成不可反推的公开 HLS/FLV 地址。推流端仍使用真实推流码推流。',
+        'hint.links':       '填写格式：视角名称 | 类型 | 播放链接 | Key Override | ClearKey 信息',
+        'hint.footer_example': '示例：## 联系方式\n- [项目主页](https://example.com)',
+        // TG
+        'tg.live_section':  '直播',   'tg.live_label':     'LIVE',
+        'tg.archive_section':'存档',  'tg.archive_label':  'ARCHIVE',
+        'tg.live_start':    '开播时推送',
+        'tg.live_stop':     '关播时推送',
+        'tg.archive_start': '上架时推送',
+        'tg.archive_stop':  '下架时推送',
+        'tg.template':      '消息模板',
+        // filter/sort options
+        'filter.all':       '无筛选',
+        'filter.enabled':   '已开启',
+        'filter.disabled':  '已关闭',
+        'filter.public':    '公开',
+        'filter.password':  '密码',
+        'filter.hidden':    '隐藏',
+        'filter.telegram':  'TG 推送',
+        'sort.default':     '默认排序',
+        'sort.newest':      '最新创建',
+        'sort.updated':     '最近更新',
+        'sort.name':        '名称 A-Z',
+        'sort.links':       '源数量多到少',
+        'pgsz.5':  '5 条', 'pgsz.10': '10 条', 'pgsz.20': '20 条',
+        'pgsz.30': '30 条','pgsz.40': '40 条', 'pgsz.50': '50 条', 'pgsz.100': '100 条',
+        // stream badges
+        'badge.hidden':     '隐',
+        'badge.closed':     '关',
+        'badge.tg':         '推',
+        // stream meta
+        'meta.links':       '个源',
+        'meta.id':          '内部 ID',
+        'meta.pub_id':      '播放 ID',
+        // probe status
+        'probe.no_info':    '没有监测到推流信息',
+        'probe.detecting':  '正在检测推流信息...',
+        'probe.detected':   '已检测到推流信息',
+        'probe.waiting':    '等待自动检测...',
+        'probe.closed':     '直播已关闭',
+        // status messages
+        'msg.site_saved':   '网站设置已保存',
+        'msg.site_err':     '加载网站设置失败',
+        'msg.pw_min':       '新密码至少需要 10 位',
+        'msg.pw_mismatch':  '两次输入的新密码不一致',
+        'msg.pw_saved':     '密码已更新，请重新登录',
+        'msg.tg_saved':     'TG 设置已保存',
+        'msg.tg_err':       '加载 TG 设置失败',
+        'msg.tg_test':      '测试消息已发送',
+        'msg.no_routes':    '还没有推流码映射。',
+        'msg.obs_err':      '加载推流码映射失败',
+        'msg.route_added':  '推流码映射已生成',
+        'msg.route_deleted':'推流码映射已删除',
+        'msg.copied':       '已复制',
+        'msg.no_key':       '请先填写推流码',
+        'msg.sort_err':     '排序保存失败',
+        // confirm/alert
+        'confirm.delete':       '确定删除?',
+        'confirm.delete_route': '确定删除这个推流码映射?',
+        'alert.link_copied':    '链接已复制!',
+        // theme
+        'theme.to_dark':    '切换暗黑模式',
+        'theme.to_light':   '切换明亮模式',
+        // type selector
+        'type.auto':        '自动',
+        // OBS link names
+        'obs.local_hls':    '本地 HLS',
+        'obs.local_flv':    '本地 FLV',
+        'obs.hidden_hls':   '隐藏 HLS',
+        'obs.hidden_flv':   '隐藏 FLV',
+        'obs.default_name': '本地推流',
+        'obs.filled_in':    '{name} 已填入直播表单',
+        // API error codes from server
+        'err.stream_not_found':           '直播不存在',
+        'err.stream_disabled':            '直播已关闭',
+        'err.stream_not_found_or_disabled':'直播不存在或已关闭',
+        'err.stream_name_empty':          '直播名称不能为空',
+        'err.stream_key_empty':           '推流密钥不能为空',
+        'err.stream_key_too_long':        '推流密钥过长',
+        'err.missing_stream_id':          '缺少直播 ID',
+        'err.auth_incorrect_password':    '密码错误',
+        'err.auth_current_pw_wrong':      '当前密码不正确',
+        'err.auth_pw_too_short':          '新密码至少需要 10 个字符',
+        'err.auth_pw_mismatch':           '两次密码不一致',
+        'err.auth_required':              '未登录或会话已过期',
+        'err.missing_session_id':         '缺少会话 ID',
+        'err.viewer_session_not_found':   '观看会话不存在',
+        'err.site_title_empty':           '网站标题不能为空',
+        'err.site_icon_invalid':          '网站图标 URL 格式无效',
+        'err.tg_config_missing':          '请填写 Telegram Bot Token 和 Chat ID',
+        'err.tg_api_error':               'Telegram 接口错误',
+        'err.tg_api_invalid':             'Telegram 接口返回无效响应',
+        'err.obs_ids_required':           '需要提供推流码 ID 和标签',
+        'err.missing_route_id':           '缺少路由 ID',
+        'err.route_not_found':            '路由不存在',
+        'err.missing_id':                 '缺少 ID',
+        'err.invalid_action':             '无效操作',
+        'err.server_error':               '服务器内部错误',
+      },
+      en: {
+        // kickers: en shows Chinese label (mirrored bilingual)
+        'kicker.site_settings': '网站设置',
+        'kicker.telegram':      'TG Bot 推送',
+        'kicker.obs':           '推流配置',
+        'kicker.stream_records':'已录入的直播',
+        'kicker.analytics':     '数据看板',
+        'kicker.device':        '设备分布',
+        'kicker.timeseries':    '时间分布',
+        'kicker.browser':       '浏览器分布',
+        'kicker.os':            '操作系统',
+        // section headings
+        'section.site_settings': 'Site Settings',
+        'section.telegram':      'Telegram Bot',
+        'section.obs':           'Stream Setup',
+        'section.stream_records':'Stream Records',
+        'section.analytics':     'Analytics',
+        'section.device':        'Device Distribution',
+        'section.timeseries':    'Timeseries',
+        'section.browser':       'Browser Distribution',
+        'section.os':            'OS Distribution',
+        // nav
+        'nav.back':          'Back to site',
+        'nav.logout':        'Log out',
+        'nav.default_label': 'Stream List',
+        // hero
+        'hero.title':        'Stream Admin',
+        // admin page
+        'admin.title_suffix': 'Admin',
+        'admin.hero_desc':    'Manage streams, sources and access for {site}.',
+        // menu
+        'menu.dashboard': 'Dashboard',
+        'menu.streams':   'Streams',
+        'menu.obs':       'Stream Setup',
+        'menu.telegram':  'Telegram',
+        'menu.site':      'Site Settings',
+        // loading / login
+        'loading.auth':       'Entering Admin',
+        'loading.auth_hint':  'Verifying session...',
+        'login.title':        'Admin Login',
+        'login.placeholder':  'Enter password',
+        'login.submit':       'Sign In',
+        'login.error':        'Incorrect password',
+        // dashboard cards
+        'dash.online':      'Online Now',
+        'dash.online_sub':  'Active in 45s',
+        'dash.today':       "Today's Views",
+        'dash.today_sub':   'New sessions today',
+        'dash.total_hist':  'Total Views',
+        'dash.total_sub':   'All sessions',
+        'dash.unique':      'Unique Visitors',
+        'dash.unique_sub':  'Deduped visitor IDs',
+        'dash.export':      '⬇ Export CSV',
+        'dash.exporting':   'Exporting...',
+        'dash.stream_detail': 'Stream Statistics',
+        // device labels
+        'device.desktop': 'Desktop',
+        'device.mobile':  'Mobile',
+        'device.tablet':  'Tablet',
+        // range buttons
+        'range.today': 'Today',
+        'range.7d':    'Last 7 days',
+        'range.30d':   'Last 30 days',
+        'range.all':   'All time',
+        'range.7d_short':  '7d',
+        'range.30d_short': '30d',
+        // chart titles
+        'chart.today': 'Today (hourly)',
+        'chart.7d':    'Last 7 days',
+        'chart.30d':   'Last 30 days',
+        'chart.unit':  'views',
+        // table headers
+        'table.stream_name': 'Stream',
+        'table.online':      'Online',
+        'table.today':       'Today',
+        'table.total':       'Total',
+        'table.unique':      'Unique',
+        'table.avg_dur':     'Avg Dur',
+        'table.device':      'Device',
+        'table.last_active': 'Last Seen',
+        'table.no_data':     'No viewing data yet',
+        'table.empty':       'Click "Dashboard" to load',
+        'table.deleted':     'Deleted',
+        // geo
+        'geo.title':   'Geography',
+        'geo.no_data': 'No geo data',
+        // stat modal
+        'stat.connecting': 'Connecting...',
+        'stat.loading':    'Loading...',
+        'stat.no_records': 'No records',
+        'stat.online':     'Online Now',
+        'stat.today':      "Today's Views",
+        'stat.total':      'Total Views',
+        'stat.unique':     'Unique Visitors',
+        'stat.device':     'Devices',
+        'stat.timeseries': 'Timeseries',
+        'stat.browser':    'Browsers',
+        'stat.os':         'Operating Systems',
+        'stat.geo':        'Geography',
+        'stat.sessions':   'Recent Sessions',
+        'stat.title':      'Stream Stats',
+        // pagination
+        'page.prev':    'Prev',
+        'page.next':    'Next',
+        'page.page_of': 'Page {cur} of {total}',
+        'page.total':   '{n} total',
+        // session sort
+        'sort.last_seen':  'Last active',
+        'sort.started_at': 'Started',
+        'sort.duration':   'Duration',
+        'sort.device':     'Device',
+        'sort.browser':    'Browser',
+        'sort.ip':         'IP',
+        // stream list
+        'streams.per_page': 'Per page',
+        'streams.showing':  '{shown} / {total} streams',
+        'streams.no_match': 'No matching streams',
+        // live indicator
+        'live.live':        'Live',
+        'live.disconnected':'Disconnected',
+        // hbar empty
+        'hbar.no_data': 'No data',
+        // session
+        'sess.watching': 'Watching',
+        'sess.dur':      'Duration',
+        'sess.online':   'Online',
+        // editor
+        'editor.add_title': 'Add Stream',
+        'editor.edit_title':'Edit Stream',
+        // lang
+        'lang.btn_label': '中',
+        // shared
+        'status.loading': 'Loading...',
+        // actions
+        'action.disable': 'Disable',
+        'action.enable':  'Enable',
+        // relative time
+        'rel.just_now':  'just now',
+        'rel.min_ago':   '{n}min ago',
+        'rel.hour_ago':  '{n}h ago',
+        'rel.day_ago':   '{n}d ago',
+        // session detail
+        'sess.lt1min':   '< 1min',
+        // stream list live stats
+        'ss.live_stat':  'Live {a} · Today {b} · Total {c}',
+        // stream action buttons
+        'action.stats':     'Stats',
+        'action.copy_link': 'Copy link',
+        'action.delete':    'Delete',
+        'action.push':      'Push',
+        'action.push_on':   'Disable push',
+        'action.push_off':  'Enable push',
+        'action.more':      'More',
+        // form labels
+        'form.site_title':  'Site Title',
+        'form.site_desc':   'Site Description',
+        'form.site_icon':   'Site Icon URL',
+        'form.site_url':    'Public Site URL',
+        'form.nav_links':   'Homepage Nav Links',
+        'form.footer':      'Footer Markdown',
+        'form.current_pw':  'Current Password',
+        'form.new_pw':      'New Password',
+        'form.confirm_pw':  'Confirm New Password',
+        'form.tg_chat_id':  'Group or User ID',
+        'form.obs_key':     'Stream Key',
+        'form.obs_host':    'RTMP Host/IP',
+        'form.obs_playback':'HLS/FLV Playback URL',
+        'form.obs_server':  'RTMP Server',
+        'form.obs_key_disp':'Stream Key',
+        'form.obs_hls':     'HLS Playback URL',
+        'form.obs_flv':     'FLV Playback URL',
+        'form.obs_route_key':'Add Stream Key',
+        'form.stream_name': 'Stream Name',
+        'form.stream_pw':   'Password (empty = public)',
+        'form.stream_type': 'Stream Type',
+        'form.hide_home':   'Hide from homepage',
+        // section headings
+        'h3.security':      'Security',
+        'h3.api_keys':      'API Keys',
+        'hint.api_keys':    'For programmatic access to admin endpoints. Send Authorization: Bearer <token> header or ?api_key=<token> query param. The token is only shown once on creation.',
+        'form.api_key_label': 'Key label',
+        'ph.api_key_label': 'Label (optional)',
+        'btn.create_api_key': 'Generate key',
+        'api.new_token_hint': 'Copy and keep safe — this token will not be shown again',
+        'api.copy':         'Copy',
+        'api.copied':       'Copied',
+        'api.revoke':       'Revoke',
+        'api.never_used':   'Never used',
+        'api.last_used':    'Last used: ',
+        'api.no_keys':      'No API keys',
+        'api.confirm_revoke': 'Revoke this key? This cannot be undone.',
+        'h3.obs_routes':    'Hidden Playback Routes',
+        'h3.links':         'Sources',
+        // buttons
+        'btn.add_nav_link': '+ Add Link',
+        'btn.save_site':    'Save Settings',
+        'btn.update_pw':    'Update Password',
+        'btn.save_tg':      'Save TG Settings',
+        'btn.tg_test':      'Send Test Message',
+        'btn.copy':         'Copy',
+        'btn.use_obs_hls':  'Use HLS in Stream Form',
+        'btn.use_obs_flv':  'Use FLV in Stream Form',
+        'btn.gen_route':    'Generate',
+        'btn.add_stream':   '+ Add',
+        'btn.reset_filter': 'Clear',
+        'btn.add_link':     '+ Add Source',
+        'btn.save':         'Save',
+        'btn.cancel':       'Cancel',
+        'btn.delete':       'Delete',
+        'btn.copy_hls':     'Copy HLS',
+        'btn.copy_flv':     'Copy FLV',
+        'btn.use_hls':      'Use HLS',
+        'btn.use_flv':      'Use FLV',
+        'btn.open':         'Open',
+        'btn.edit':         'Edit',
+        // placeholders
+        'ph.site_desc':     'English description (optional)',
+        'ph.site_icon':     '/favicon.ico or https://example.com/favicon.png',
+        'ph.site_url':      'Defaults to current admin URL',
+        'ph.footer':        'Supports headings, paragraphs, lists and links. Leave empty to hide footer.',
+        'ph.obs_host':      'e.g. live-rtmp.stdm.moe or live-rtmp.stdm.moe:1935',
+        'ph.obs_playback':  'e.g. https://live.example.com',
+        'ph.obs_route_key': 'e.g. my-live-001',
+        'ph.search':        'Search by name / ID / URL',
+        'ph.nav_label':     'Label',
+        'ph.nav_url':       '#stream-list or https://example.com',
+        'ph.link_name':     'Source name',
+        'ph.link_url':      'URL (m3u8/flv/mpd)',
+        'ph.key_aes':       'AES-128 Key Hex, multi-line: main-video=hex',
+        'ph.clearkey':      'ClearKey JSON, e.g. {"kid":"key"}',
+        // hints
+        'hint.nav_links':   'Leave empty to hide nav links. Supports anchors like #stream-list or full URLs.',
+        'hint.pw_change':   'Changing the admin password will log you out of the current session.',
+        'hint.tg_config':   'Configure Bot Token and recipient ID to send notifications on stream start/stop.',
+        'hint.tg_vars':     'Variables: {title}, {url}, {site_title}, {time}, {status}, {stream_id}, {public_id}, {link_name}, {source_url} &nbsp;·&nbsp; HTML supported',
+        'hint.obs_rtmp':    'The encoder pushes via RTMP to NAS; the player uses HLS or FLV from SRS.',
+        'hint.obs_routes':  'Adding a custom stream key generates a public HLS/FLV URL that cannot be reverse-engineered.',
+        'hint.links':       'Format: name | type | URL | Key Override | ClearKey',
+        'hint.footer_example': 'Example: ## Contact\n- [Project page](https://example.com)',
+        // TG
+        'tg.live_section':  'Live',    'tg.live_label':    '直播',
+        'tg.archive_section':'Archive','tg.archive_label': '存档',
+        'tg.live_start':    'Notify on stream start',
+        'tg.live_stop':     'Notify on stream stop',
+        'tg.archive_start': 'Notify on archive publish',
+        'tg.archive_stop':  'Notify on archive unpublish',
+        'tg.template':      'Message template',
+        // filter/sort options
+        'filter.all':       'All',
+        'filter.enabled':   'Enabled',
+        'filter.disabled':  'Disabled',
+        'filter.public':    'Public',
+        'filter.password':  'Password',
+        'filter.hidden':    'Hidden',
+        'filter.telegram':  'TG Push',
+        'sort.default':     'Default',
+        'sort.newest':      'Newest',
+        'sort.updated':     'Recently updated',
+        'sort.name':        'Name A–Z',
+        'sort.links':       'Most sources',
+        'pgsz.5':  '5', 'pgsz.10': '10', 'pgsz.20': '20',
+        'pgsz.30': '30','pgsz.40': '40', 'pgsz.50': '50', 'pgsz.100': '100',
+        // stream badges
+        'badge.hidden':     'H',
+        'badge.closed':     'Off',
+        'badge.tg':         'TG',
+        // stream meta
+        'meta.links':       'sources',
+        'meta.id':          'ID',
+        'meta.pub_id':      'Public ID',
+        // probe status
+        'probe.no_info':    'No stream detected',
+        'probe.detecting':  'Detecting stream...',
+        'probe.detected':   'Stream detected',
+        'probe.waiting':    'Waiting for detection...',
+        'probe.closed':     'Stream disabled',
+        // status messages
+        'msg.site_saved':   'Settings saved',
+        'msg.site_err':     'Failed to load settings',
+        'msg.pw_min':       'Password must be at least 10 characters',
+        'msg.pw_mismatch':  'Passwords do not match',
+        'msg.pw_saved':     'Password updated, please log in again',
+        'msg.tg_saved':     'TG settings saved',
+        'msg.tg_err':       'Failed to load TG settings',
+        'msg.tg_test':      'Test message sent',
+        'msg.no_routes':    'No stream key mappings yet.',
+        'msg.obs_err':      'Failed to load stream key mappings',
+        'msg.route_added':  'Stream key mapping created',
+        'msg.route_deleted':'Stream key mapping deleted',
+        'msg.copied':       'Copied',
+        'msg.no_key':       'Please fill in stream key first',
+        'msg.sort_err':     'Failed to save order',
+        // confirm/alert
+        'confirm.delete':       'Confirm delete?',
+        'confirm.delete_route': 'Delete this stream key mapping?',
+        'alert.link_copied':    'Link copied!',
+        // theme
+        'theme.to_dark':    'Switch to dark mode',
+        'theme.to_light':   'Switch to light mode',
+        // type selector
+        'type.auto':        'Auto',
+        // OBS link names
+        'obs.local_hls':    'Local HLS',
+        'obs.local_flv':    'Local FLV',
+        'obs.hidden_hls':   'Hidden HLS',
+        'obs.hidden_flv':   'Hidden FLV',
+        'obs.default_name': 'Local Stream',
+        'obs.filled_in':    '{name} added to stream form',
+        // API error codes from server
+        'err.stream_not_found':           'Stream not found',
+        'err.stream_disabled':            'Stream is disabled',
+        'err.stream_not_found_or_disabled':'Stream not found or disabled',
+        'err.stream_name_empty':          'Stream name cannot be empty',
+        'err.stream_key_empty':           'Stream key cannot be empty',
+        'err.stream_key_too_long':        'Stream key too long',
+        'err.missing_stream_id':          'Missing stream ID',
+        'err.auth_incorrect_password':    'Incorrect password',
+        'err.auth_current_pw_wrong':      'Current password is incorrect',
+        'err.auth_pw_too_short':          'New password must be at least 10 characters',
+        'err.auth_pw_mismatch':           'Passwords do not match',
+        'err.auth_required':              'Not authenticated or session expired',
+        'err.missing_session_id':         'Missing session ID',
+        'err.viewer_session_not_found':   'Viewer session not found',
+        'err.site_title_empty':           'Site title cannot be empty',
+        'err.site_icon_invalid':          'Invalid site icon URL',
+        'err.tg_config_missing':          'Telegram bot token and chat ID are required',
+        'err.tg_api_error':               'Telegram API error',
+        'err.tg_api_invalid':             'Telegram API returned an invalid response',
+        'err.obs_ids_required':           'Stream key IDs and label are required',
+        'err.missing_route_id':           'Missing route ID',
+        'err.route_not_found':            'Route not found',
+        'err.missing_id':                 'Missing ID',
+        'err.invalid_action':             'Invalid action',
+        'err.server_error':               'Internal server error',
+      }
+    };
+
+    var LANG = localStorage.getItem('lang_pref') || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+
+    function t(key) {
+      return (TRANSLATIONS[LANG] && TRANSLATIONS[LANG][key] != null)
+        ? TRANSLATIONS[LANG][key]
+        : (TRANSLATIONS.zh[key] != null ? TRANSLATIONS.zh[key] : key);
+    }
+
+    function applyI18n() {
+      document.querySelectorAll('[data-i18n]').forEach(function(el) {
+        var v = t(el.dataset.i18n);
+        if (el.tagName === 'INPUT' && el.type !== 'submit' && el.type !== 'button' && el.type !== 'checkbox' && el.type !== 'radio') {
+          el.placeholder = v;
+        } else if (el.tagName === 'TEXTAREA') {
+          el.placeholder = v;
+        } else {
+          el.textContent = v;
+        }
+      });
+      document.querySelectorAll('[data-i18n-title]').forEach(function(el) {
+        var v = t(el.dataset.i18nTitle);
+        el.title = v;
+        el.setAttribute('aria-label', v);
+      });
+      document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+      document.documentElement.dataset.lang = LANG;
+      var btn = document.getElementById('lang-toggle');
+      if (btn) btn.textContent = t('lang.btn_label');
+    }
+
+    // Callbacks registered by different script blocks that need to re-render
+    // when the language changes (e.g. sort tab labels, per-language form fields).
+    // Each hook is wrapped in try/catch so a failure in one does not block others.
+    var _langChangeHooks = [];
+    function setLang(lang) {
+      LANG = lang;
+      localStorage.setItem('lang_pref', lang);
+      applyI18n();
+      _langChangeHooks.forEach(function(fn) { try { fn(); } catch(e) {} });
+    }
+
+    const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+    const escapeAttr = escapeHtml;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const themeButtons = Array.from(document.querySelectorAll('.theme-toggle:not(#lang-toggle)'));
+      const applyTheme = (theme) => {
+        document.documentElement.dataset.theme = theme;
+        localStorage.setItem('site_theme', theme);
+        const label = theme === 'dark' ? t('theme.to_light') : t('theme.to_dark');
+        themeButtons.forEach(btn => {
+          btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+          btn.setAttribute('aria-label', label);
+          btn.setAttribute('title', label);
+        });
+      };
+      const switchThemeWithRipple = (button) => {
+        const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        const rect = button.getBoundingClientRect();
+        document.documentElement.style.setProperty('--theme-ripple-x', `${rect.left + rect.width / 2}px`);
+        document.documentElement.style.setProperty('--theme-ripple-y', `${rect.top + rect.height / 2}px`);
+        if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          applyTheme(nextTheme);
+          return;
+        }
+        document.startViewTransition(() => applyTheme(nextTheme));
+      };
+      const savedTheme = localStorage.getItem('site_theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
+      themeButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          switchThemeWithRipple(btn);
+        });
+      });
+
+      // lang toggle (handler registered later after all deps are declared)
+      applyI18n();
+      _langChangeHooks.push(() => {
+        if (allStreams.length) renderList();
+        applyTheme(document.documentElement.dataset.theme || 'light');
+        const heroDesc = document.getElementById('admin-hero-desc');
+        if (heroDesc) {
+          const siteTitle = document.getElementById('admin-site-brand')?.textContent || 'StreamHall';
+          heroDesc.textContent = t('admin.hero_desc').replace('{site}', siteTitle);
+        }
+      });
+
+      const adminMenuButtons = Array.from(document.querySelectorAll('.admin-menu-btn'));
+      const adminViews = Array.from(document.querySelectorAll('[data-admin-view]'));
+
+      let activeRecordsLabel = localStorage.getItem('admin_records_label') || 'live';
+      const updateSubBtns = () => {
+        const recordsActive = adminViews.some(v => v.dataset.adminView === 'records' && v.classList.contains('active'));
+        document.querySelectorAll('.admin-sub-btn').forEach(b => {
+          b.classList.toggle('active', recordsActive && b.dataset.streamLabel === activeRecordsLabel);
+        });
+        document.getElementById('records-group')?.classList.toggle('in-view', recordsActive);
+      };
+
+      const switchAdminView = (target, pushState = true) => {
+        const next = adminViews.some(view => view.dataset.adminView === target) ? target : 'records';
+        adminViews.forEach(view => view.classList.toggle('active', view.dataset.adminView === next));
+        adminMenuButtons.forEach(btn => {
+          const active = btn.dataset.adminViewTarget === next;
+          btn.classList.toggle('active', active);
+          btn.setAttribute('aria-current', active ? 'page' : 'false');
+        });
+        document.getElementById('records-group')?.classList.toggle('in-view', next === 'records');
+        updateSubBtns();
+        localStorage.setItem('admin_active_view', next);
+        if (pushState) history.replaceState(null, '', `#${next}`);
+      };
+      adminMenuButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (btn.dataset.adminViewTarget) switchAdminView(btn.dataset.adminViewTarget);
+        });
+      });
+      document.getElementById('records-group-toggle')?.addEventListener('click', () => {
+        document.getElementById('records-group')?.classList.toggle('open');
+      });
+      document.querySelectorAll('.admin-sub-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeRecordsLabel = btn.dataset.streamLabel;
+          localStorage.setItem('admin_records_label', activeRecordsLabel);
+          streamLabelFilter = activeRecordsLabel;
+          currentPage = 1;
+          switchAdminView('records');
+          renderList();
+        });
+      });
+      const initialView = (location.hash || '').replace(/^#/, '') || localStorage.getItem('admin_active_view') || 'dashboard';
+      switchAdminView(initialView, false);
+
+      let _siteDescZh = '';
+      let _siteDescEn = '';
+      let _navLinksZh = [];
+      let _navLinksEn = [];
+      let _footerMarkdownZh = '';
+      let _footerMarkdownEn = '';
+
+      const els = {
+        authLoading: document.getElementById('auth-loading'),
+        pwdModal: document.getElementById('password-modal'),
+        panel: document.getElementById('admin-panel'),
+        pwdForm: document.getElementById('password-form'),
+        pwdInput: document.getElementById('password-input'),
+        siteSettingsForm: document.getElementById('site-settings-form'),
+        siteTitleInput: document.getElementById('site-title-input'),
+        siteDescriptionInput: document.getElementById('site-description-input'),
+        siteIconUrl: document.getElementById('site-icon-url'),
+        sitePublicBaseUrl: document.getElementById('site-public-base-url'),
+        siteNavLinksContainer: document.getElementById('site-nav-links-container'),
+        siteAddNavLink: document.getElementById('site-add-nav-link'),
+        siteFooterMarkdown: document.getElementById('site-footer-markdown'),
+        siteSettingsStatus: document.getElementById('site-settings-status'),
+        adminPasswordForm: document.getElementById('admin-password-form'),
+        adminCurrentPassword: document.getElementById('admin-current-password'),
+        adminNewPassword: document.getElementById('admin-new-password'),
+        adminConfirmPassword: document.getElementById('admin-confirm-password'),
+        adminPasswordStatus: document.getElementById('admin-password-status'),
+        apiKeyLabelInput: document.getElementById('api-key-label-input'),
+        apiKeyCreateBtn: document.getElementById('api-key-create-btn'),
+        apiKeyNewToken: document.getElementById('api-key-new-token'),
+        apiKeyNewTokenValue: document.getElementById('api-key-new-token-value'),
+        apiKeyCopyBtn: document.getElementById('api-key-copy-btn'),
+        apiKeysList: document.getElementById('api-keys-list'),
+        apiKeysStatus: document.getElementById('api-keys-status'),
+        telegramForm: document.getElementById('telegram-settings-form'),
+        telegramBotToken: document.getElementById('telegram-bot-token'),
+        telegramChatId: document.getElementById('telegram-chat-id'),
+        telegramLiveNotifyStart:      document.getElementById('telegram-live-notify-start'),
+        telegramLiveNotifyStop:       document.getElementById('telegram-live-notify-stop'),
+        telegramLiveStartTemplate:    document.getElementById('telegram-live-start-template'),
+        telegramLiveStopTemplate:     document.getElementById('telegram-live-stop-template'),
+        telegramArchiveNotifyStart:   document.getElementById('telegram-archive-notify-start'),
+        telegramArchiveNotifyStop:    document.getElementById('telegram-archive-notify-stop'),
+        telegramArchiveStartTemplate: document.getElementById('telegram-archive-start-template'),
+        telegramArchiveStopTemplate:  document.getElementById('telegram-archive-stop-template'),
+        telegramStatus: document.getElementById('telegram-status'),
+        telegramTestBtn: document.getElementById('telegram-test-btn'),
+        obsStreamKey: document.getElementById('obs-stream-key'),
+        obsRtmpHost: document.getElementById('obs-rtmp-host'),
+        obsPlaybackOrigin: document.getElementById('obs-playback-origin'),
+        obsServerUrl: document.getElementById('obs-server-url'),
+        obsStreamKeyDisplay: document.getElementById('obs-stream-key-display'),
+        obsHlsUrl: document.getElementById('obs-hls-url'),
+        obsFlvUrl: document.getElementById('obs-flv-url'),
+        obsRouteKey: document.getElementById('obs-route-key'),
+        obsRouteAddBtn: document.getElementById('obs-route-add-btn'),
+        obsRouteList: document.getElementById('obs-route-list'),
+        obsStatus: document.getElementById('obs-status'),
+        streamCount: document.getElementById('admin-stream-count'),
+        streamSearch: document.getElementById('admin-stream-search'),
+        streamFilter: document.getElementById('admin-stream-filter'),
+        streamSort: document.getElementById('admin-stream-sort'),
+        streamReset: document.getElementById('admin-stream-reset'),
+        pageSize: document.getElementById('admin-page-size'),
+        pageInfo: document.getElementById('admin-page-info'),
+        prevPage: document.getElementById('admin-prev-page'),
+        nextPage: document.getElementById('admin-next-page'),
+        list: document.getElementById('admin-stream-list'),
+        form: document.getElementById('stream-form'),
+        title: document.getElementById('form-title'),
+        idInput: document.getElementById('stream-id'),
+        nameInput: document.getElementById('event-name'),
+        streamLabelInput: document.getElementById('stream-label'),
+        passInput: document.getElementById('stream-password'),
+        hiddenInput: document.getElementById('is-hidden'),
+        linksContainer: document.getElementById('links-container'),
+        cancelBtn: document.getElementById('cancel-btn')
+      };
+
+      let allStreams = [];
+      let streamStats = {};
+      let obsRoutes = [];
+      let isSavedProbeRunning = false;
+      const savedProbeCache = new Map();
+      const linkProbeTimers = new WeakMap();
+      const probeIntervalMs = 10000;
+      const pageSizeOptions = [5, 10, 20, 30, 40, 50];
+      let currentPage = 1;
+      let pageSize = Number(localStorage.getItem('admin_stream_page_size') || 5);
+      let streamSearchQuery = '';
+      let streamFilter = 'all';
+      let streamLabelFilter = activeRecordsLabel;
+      let streamSort = 'default';
+      if (!pageSizeOptions.includes(pageSize)) pageSize = 5;
+      els.pageSize.value = String(pageSize);
+
+      const apiCall = async (action, body = null) => {
+        const method = body ? 'POST' : 'GET';
+        const headers = body ? { 'Content-Type': 'application/json' } : {};
+        const options = { method, headers };
+        if (body) options.body = JSON.stringify(body);
+        const res = await fetch(`/api?action=${encodeURIComponent(action)}&_t=${Date.now()}`, options);
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') {
+          const base = data.code ? (t('err.' + data.code) || data.code) : (data.message || 'API Error');
+          const detail = data.detail ? ` (${data.detail})` : '';
+          throw new Error(base + detail);
+        }
+        return data;
+      };
+
+      const showStatus = (el, msg, isErr = false) => {
+        el.innerText = msg;
+        el.className = `status ${isErr ? 'error' : ''}`;
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.add('hidden'), 5000);
+      };
+
+      const copyText = async (text) => {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.setAttribute('readonly', '');
+        temp.style.position = 'fixed';
+        temp.style.opacity = '0';
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        temp.remove();
+      };
+
+      const inferLinkType = (url, explicitType = '') => {
+        if (explicitType) return explicitType;
+        const path = String(url || '').split('?')[0].toLowerCase();
+        if (path.endsWith('.m3u8')) return 'm3u8';
+        if (path.endsWith('.flv')) return 'flv';
+        if (path.endsWith('.mpd')) return 'dash';
+        return '';
+      };
+
+      const setProbeStatus = (el, state, message) => {
+        if (!el) return;
+        el.textContent = message || '';
+        el.className = 'stream-check-status';
+        if (state) el.classList.add(state);
+      };
+
+      const getSavedProbeEl = (streamId) => {
+        const safeId = String(streamId).replace(/["\\]/g, '\\$&');
+        return els.list.querySelector(`[data-stream-probe="${safeId}"]`);
+      };
+
+      const setSavedProbeStatus = (streamId, state, message) => {
+        const el = getSavedProbeEl(streamId);
+        const nextMessage = message || '';
+        savedProbeCache.set(String(streamId), {
+          state: state || '',
+          message: nextMessage,
+          complete: state !== 'is-checking'
+        });
+        if (!el) return;
+        if (el.dataset.probeState === state && el.dataset.probeMessage === nextMessage) return;
+        el.textContent = nextMessage;
+        el.className = 'stream-live-state';
+        if (state) el.classList.add(state);
+        el.dataset.probeState = state || '';
+        el.dataset.probeMessage = nextMessage;
+        if (state !== 'is-checking') el.dataset.probeComplete = '1';
+      };
+
+      const probeUrl = async (url, type = '') => {
+        const res = await apiCall('check_stream_url', {
+          url,
+          type: inferLinkType(url, type)
+        });
+        return res.data || { valid: false, message: t('probe.no_info') };
+      };
+
+      const checkLinkRow = async (row, silent = false) => {
+        if (!row || !row.isConnected || row.dataset.probeActive === '1') return;
+        const input = row.querySelector('.l-url');
+        const statusEl = row.querySelector('.stream-check-status');
+        const url = input?.value.trim() || '';
+        if (!url) {
+          setProbeStatus(statusEl, '', '');
+          return;
+        }
+        const type = row.querySelector('.l-type')?.value || '';
+        const token = `${Date.now()}-${Math.random()}`;
+        row.dataset.probeToken = token;
+        row.dataset.probeActive = '1';
+        if (!silent) setProbeStatus(statusEl, 'is-checking', t('probe.detecting'));
+        try {
+          const result = await probeUrl(url, type);
+          if (!row.isConnected || row.dataset.probeToken !== token) return;
+          setProbeStatus(
+            statusEl,
+            result.valid ? 'is-online' : 'is-offline',
+            result.valid ? t('probe.detected') : t('probe.no_info')
+          );
+        } catch (e) {
+          if (row.isConnected && row.dataset.probeToken === token) {
+            setProbeStatus(statusEl, 'is-offline', t('probe.no_info'));
+          }
+        } finally {
+          if (row.dataset.probeToken === token) delete row.dataset.probeActive;
+        }
+      };
+
+      const scheduleLinkRowCheck = (row, delay = 700) => {
+        window.clearTimeout(linkProbeTimers.get(row));
+        const input = row.querySelector('.l-url');
+        if (!input?.value.trim()) {
+          setProbeStatus(row.querySelector('.stream-check-status'), '', '');
+          return;
+        }
+        setProbeStatus(row.querySelector('.stream-check-status'), 'is-checking', t('probe.waiting'));
+        linkProbeTimers.set(row, window.setTimeout(() => checkLinkRow(row), delay));
+      };
+
+      const checkFormLinks = () => {
+        Array.from(els.linksContainer.children).forEach(row => {
+          if (row.querySelector('.l-url')?.value.trim()) checkLinkRow(row, true);
+        });
+      };
+
+      const applyProbeResult = (streamId, result) => {
+        setSavedProbeStatus(
+          streamId,
+          result.valid ? 'is-online' : 'is-offline',
+          result.valid ? t('probe.detected') : (t('probe.' + result.code) || t('probe.no_info'))
+        );
+      };
+
+      const checkSingleSavedStream = async (stream, showChecking = false) => {
+        if (!stream || Number(stream.is_enabled ?? 1) !== 1) {
+          if (stream) setSavedProbeStatus(stream.id, 'is-offline', t('probe.closed'));
+          return;
+        }
+        if (showChecking) setSavedProbeStatus(stream.id, 'is-checking', t('probe.detecting'));
+        try {
+          const res = await apiCall('check_stream', { id: stream.id });
+          applyProbeResult(stream.id, res.data || { valid: false });
+        } catch (e) {
+          setSavedProbeStatus(stream.id, 'is-offline', t('probe.no_info'));
+        }
+      };
+
+      const checkSavedStreams = async () => {
+        if (isSavedProbeRunning || allStreams.length === 0) return;
+        isSavedProbeRunning = true;
+        try {
+          for (const stream of allStreams) {
+            if (Number(stream.is_enabled ?? 1) !== 1) {
+              setSavedProbeStatus(stream.id, 'is-offline', t('probe.closed'));
+              continue;
+            }
+            const probeEl = getSavedProbeEl(stream.id);
+            if (!probeEl?.dataset.probeComplete) {
+              setSavedProbeStatus(stream.id, 'is-checking', t('probe.detecting'));
+            }
+            try {
+              const res = await apiCall('check_stream', { id: stream.id });
+              const result = res.data || { valid: false };
+              applyProbeResult(stream.id, result);
+            } catch (e) {
+              setSavedProbeStatus(stream.id, 'is-offline', t('probe.no_info'));
+            }
+          }
+        } finally {
+          isSavedProbeRunning = false;
+        }
+      };
+
+      const showLogin = () => {
+        els.authLoading.classList.add('hidden');
+        els.panel.classList.add('hidden');
+        els.pwdModal.classList.remove('hidden');
+        els.pwdInput.focus();
+      };
+
+      const enterPanel = () => {
+        els.authLoading.classList.add('hidden');
+        els.pwdModal.classList.add('hidden');
+        els.panel.classList.remove('hidden');
+        loadSiteSettings();
+        loadApiKeys();
+        loadTelegramSettings();
+        loadObsRoutes();
+        loadStreams();
+        const view = (location.hash || '').replace(/^#/, '') || localStorage.getItem('admin_active_view') || 'dashboard';
+        if (view === 'dashboard') document.dispatchEvent(new CustomEvent('admin:enter-dashboard'));
+      };
+
+      apiCall('session').then(res => {
+        if (res.logged_in) {
+          enterPanel();
+          return;
+        }
+        showLogin();
+      }).catch(showLogin);
+
+      els.pwdForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await apiCall('login', { password: els.pwdInput.value });
+          enterPanel();
+        } catch (e) {
+          const err = document.getElementById('password-error');
+          err.textContent = e.message || t('login.error');
+          err.classList.remove('hidden');
+        }
+      });
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await apiCall('logout');
+        window.location.reload();
+      });
+
+      const parseNavLinks = (value) => {
+        if (Array.isArray(value)) return value;
+        try {
+          const parsed = JSON.parse(value || '[]');
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          return [];
+        }
+      };
+
+      const addNavLinkUI = (label = '', url = '') => {
+        const row = document.createElement('div');
+        row.className = 'nav-link-row';
+        row.innerHTML = `
+          <input class="nav-label" maxlength="24" placeholder="${t('ph.nav_label')}" value="${escapeAttr(label)}">
+          <input class="nav-url" maxlength="300" placeholder="${t('ph.nav_url')}" value="${escapeAttr(url)}">
+          <button type="button" class="btn-danger nav-remove-btn">${t('btn.delete')}</button>
+        `;
+        row.querySelector('.nav-remove-btn').addEventListener('click', () => row.remove());
+        els.siteNavLinksContainer.appendChild(row);
+      };
+
+      const collectNavLinks = () => Array.from(els.siteNavLinksContainer.children).map(row => ({
+        label: row.querySelector('.nav-label')?.value.trim() || '',
+        url: row.querySelector('.nav-url')?.value.trim() || ''
+      })).filter(link => link.label && link.url);
+
+      // Register lang toggle handler here — all deps (els, collectNavLinks, addNavLinkUI, _siteDesc*) are now declared
+      document.getElementById('lang-toggle')?.addEventListener('click', () => {
+        if (LANG === 'zh') {
+          _siteDescZh = els.siteDescriptionInput.value;
+          _navLinksZh = collectNavLinks();
+          _footerMarkdownZh = els.siteFooterMarkdown.value;
+        } else {
+          _siteDescEn = els.siteDescriptionInput.value;
+          _navLinksEn = collectNavLinks();
+          _footerMarkdownEn = els.siteFooterMarkdown.value;
+        }
+        setLang(LANG === 'zh' ? 'en' : 'zh');
+        els.siteDescriptionInput.value = LANG === 'zh' ? _siteDescZh : (_siteDescEn || _siteDescZh);
+        els.siteNavLinksContainer.innerHTML = '';
+        (LANG === 'zh' ? _navLinksZh : (_navLinksEn.length ? _navLinksEn : _navLinksZh)).forEach(link => addNavLinkUI(link.label, link.url));
+        els.siteFooterMarkdown.value = LANG === 'zh' ? _footerMarkdownZh : (_footerMarkdownEn || _footerMarkdownZh);
+      });
+
+      const applySiteIcon = (url = '') => {
+        const iconUrl = String(url || '').trim();
+        let link = document.querySelector('link[rel="icon"]');
+        if (!iconUrl) {
+          if (link) link.remove();
+          return;
+        }
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.href = iconUrl;
+      };
+
+      const applySiteSettings = (settings = {}) => {
+        const siteTitle = settings.site_title || 'StreamHall';
+        _siteDescZh = settings.site_description || '';
+        _siteDescEn = settings.site_description_en || '';
+        _navLinksZh = settings.site_nav_links == null
+          ? [{ label: t('nav.default_label'), url: '#stream-list' }]
+          : parseNavLinks(settings.site_nav_links);
+        _navLinksEn = settings.site_nav_links_en == null
+          ? [{ label: 'Streams', url: '#stream-list' }]
+          : parseNavLinks(settings.site_nav_links_en);
+        _footerMarkdownZh = settings.footer_markdown || '';
+        _footerMarkdownEn = settings.footer_markdown_en || '';
+        document.title = `${siteTitle} - ${t('admin.title_suffix')}`;
+        document.getElementById('admin-site-brand').textContent = siteTitle;
+        const heroDesc = document.getElementById('admin-hero-desc');
+        if (heroDesc) heroDesc.textContent = t('admin.hero_desc').replace('{site}', siteTitle);
+        els.siteTitleInput.value = siteTitle;
+        els.siteDescriptionInput.value = LANG === 'zh' ? _siteDescZh : (_siteDescEn || _siteDescZh);
+        els.siteIconUrl.value = settings.site_icon_url || '';
+        applySiteIcon(settings.site_icon_url || '');
+        els.siteNavLinksContainer.innerHTML = '';
+        (LANG === 'zh' ? _navLinksZh : (_navLinksEn.length ? _navLinksEn : _navLinksZh)).forEach(link => addNavLinkUI(link.label, link.url));
+        els.siteFooterMarkdown.value = LANG === 'zh' ? _footerMarkdownZh : (_footerMarkdownEn || _footerMarkdownZh);
+        els.sitePublicBaseUrl.placeholder = window.location.origin;
+        els.sitePublicBaseUrl.value = settings.telegram_public_base_url || window.location.origin;
+        localStorage.setItem('site_settings_cache', JSON.stringify({
+          site_title: siteTitle,
+          site_description: _siteDescZh,
+          site_description_en: _siteDescEn,
+          site_icon_url: els.siteIconUrl.value,
+          site_nav_links: JSON.stringify(_navLinksZh),
+          site_nav_links_en: JSON.stringify(_navLinksEn),
+          footer_markdown: _footerMarkdownZh,
+          footer_markdown_en: _footerMarkdownEn,
+          telegram_public_base_url: els.sitePublicBaseUrl.value
+        }));
+      };
+
+      const loadSiteSettings = async () => {
+        try {
+          const res = await apiCall('site_settings');
+          applySiteSettings(res.data);
+        } catch (e) {
+          showStatus(els.siteSettingsStatus, `${t('msg.site_err')}: ${e.message}`, true);
+        }
+      };
+
+      els.siteSettingsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const curDescZh = LANG === 'zh' ? els.siteDescriptionInput.value : _siteDescZh;
+          const curDescEn = LANG === 'en' ? els.siteDescriptionInput.value : _siteDescEn;
+          const curNavLinks = LANG === 'zh' ? collectNavLinks() : _navLinksZh;
+          const curNavLinksEn = LANG === 'en' ? collectNavLinks() : _navLinksEn;
+          const curFooterZh = LANG === 'zh' ? els.siteFooterMarkdown.value : _footerMarkdownZh;
+          const curFooterEn = LANG === 'en' ? els.siteFooterMarkdown.value : _footerMarkdownEn;
+          const res = await apiCall('update_site_settings', {
+            siteTitle: els.siteTitleInput.value,
+            siteDescription: curDescZh,
+            siteDescriptionEn: curDescEn,
+            siteIconUrl: els.siteIconUrl.value.trim(),
+            navLinks: curNavLinks,
+            navLinksEn: curNavLinksEn,
+            footerMarkdown: curFooterZh,
+            footerMarkdownEn: curFooterEn,
+            publicBaseUrl: els.sitePublicBaseUrl.value.trim() || window.location.origin
+          });
+          applySiteSettings(res.data);
+          showStatus(els.siteSettingsStatus, t('msg.site_saved'));
+        } catch (e) {
+          showStatus(els.siteSettingsStatus, e.message, true);
+        }
+      });
+
+      els.siteAddNavLink.addEventListener('click', () => addNavLinkUI());
+
+      const renderApiKeys = (keys) => {
+        if (!els.apiKeysList) return;
+        if (!keys.length) {
+          els.apiKeysList.innerHTML = `<p style="color:var(--muted);font-size:.86rem;padding:8px 0;">${t('api.no_keys')}</p>`;
+          return;
+        }
+        els.apiKeysList.innerHTML = keys.map(k => {
+          const lastUsed = k.last_used_at
+            ? `${t('api.last_used')}${fmtRel(k.last_used_at)}`
+            : t('api.never_used');
+          const label = k.label || `#${k.id}`;
+          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">
+            <div style="flex:1;min-width:0;">
+              <span style="font-weight:700;font-size:.88rem;">${escapeHtml(label)}</span>
+              <span style="color:var(--muted);font-size:.76rem;margin-left:8px;">${lastUsed}</span>
+            </div>
+            <button type="button" class="btn-warning" style="flex-shrink:0;padding:3px 10px;font-size:.78rem;" data-key-id="${k.id}" data-i18n="api.revoke">${t('api.revoke')}</button>
+          </div>`;
+        }).join('');
+        els.apiKeysList.querySelectorAll('[data-key-id]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm(t('api.confirm_revoke'))) return;
+            try {
+              await apiCall('delete_api_key', { id: Number(btn.dataset.keyId) });
+              loadApiKeys();
+            } catch (err) {
+              showStatus(els.apiKeysStatus, err.message, true);
+            }
+          });
+        });
+      };
+
+      const loadApiKeys = async () => {
+        try {
+          const res = await apiCall('list_api_keys');
+          renderApiKeys(res.data || []);
+        } catch (err) {
+          showStatus(els.apiKeysStatus, err.message, true);
+        }
+      };
+
+      els.apiKeyCreateBtn?.addEventListener('click', async () => {
+        const label = els.apiKeyLabelInput?.value.trim() || '';
+        try {
+          const res = await apiCall('create_api_key', { label });
+          if (els.apiKeyNewTokenValue) els.apiKeyNewTokenValue.textContent = res.data.token;
+          if (els.apiKeyNewToken) els.apiKeyNewToken.classList.remove('hidden');
+          if (els.apiKeyLabelInput) els.apiKeyLabelInput.value = '';
+          loadApiKeys();
+        } catch (err) {
+          showStatus(els.apiKeysStatus, err.message, true);
+        }
+      });
+
+      els.apiKeyCopyBtn?.addEventListener('click', () => {
+        const val = els.apiKeyNewTokenValue?.textContent || '';
+        navigator.clipboard.writeText(val).then(() => {
+          const orig = els.apiKeyCopyBtn.textContent;
+          els.apiKeyCopyBtn.textContent = t('api.copied');
+          setTimeout(() => { els.apiKeyCopyBtn.textContent = t('api.copy'); }, 1800);
+        });
+      });
+
+      els.adminPasswordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newPassword = els.adminNewPassword.value.trim();
+        const confirmPassword = els.adminConfirmPassword.value.trim();
+        if (newPassword.length < 10) {
+          showStatus(els.adminPasswordStatus, t('msg.pw_min'), true);
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          showStatus(els.adminPasswordStatus, t('msg.pw_mismatch'), true);
+          return;
+        }
+        try {
+          await apiCall('update_admin_password', {
+            currentPassword: els.adminCurrentPassword.value,
+            newPassword,
+            confirmPassword
+          });
+          els.adminPasswordForm.reset();
+          showStatus(els.adminPasswordStatus, t('msg.pw_saved'));
+          window.setTimeout(() => window.location.reload(), 900);
+        } catch (e) {
+          showStatus(els.adminPasswordStatus, e.message, true);
+        }
+      });
+
+      const applyTelegramSettings = (settings = {}) => {
+        els.telegramBotToken.value = settings.telegram_bot_token || '';
+        els.telegramChatId.value = settings.telegram_chat_id || '';
+        els.telegramLiveNotifyStart.checked      = settings.telegram_live_notify_start === '1';
+        els.telegramLiveNotifyStop.checked       = settings.telegram_live_notify_stop === '1';
+        els.telegramLiveStartTemplate.value      = settings.telegram_live_start_template    || '【开播提醒】{title}\n观看地址：{url}\n时间：{time}';
+        els.telegramLiveStopTemplate.value       = settings.telegram_live_stop_template     || '【关播提醒】{title}\n时间：{time}';
+        els.telegramArchiveNotifyStart.checked   = settings.telegram_archive_notify_start === '1';
+        els.telegramArchiveNotifyStop.checked    = settings.telegram_archive_notify_stop === '1';
+        els.telegramArchiveStartTemplate.value   = settings.telegram_archive_start_template || '【上架提醒】{title}\n观看地址：{url}\n时间：{time}';
+        els.telegramArchiveStopTemplate.value    = settings.telegram_archive_stop_template  || '【下架提醒】{title}\n时间：{time}';
+      };
+
+      const collectTelegramSettings = () => ({
+        botToken:              els.telegramBotToken.value,
+        chatId:                els.telegramChatId.value,
+        publicBaseUrl:         els.sitePublicBaseUrl.value.trim() || window.location.origin,
+        liveNotifyStart:       els.telegramLiveNotifyStart.checked,
+        liveNotifyStop:        els.telegramLiveNotifyStop.checked,
+        liveStartTemplate:     els.telegramLiveStartTemplate.value,
+        liveStopTemplate:      els.telegramLiveStopTemplate.value,
+        archiveNotifyStart:    els.telegramArchiveNotifyStart.checked,
+        archiveNotifyStop:     els.telegramArchiveNotifyStop.checked,
+        archiveStartTemplate:  els.telegramArchiveStartTemplate.value,
+        archiveStopTemplate:   els.telegramArchiveStopTemplate.value,
+      });
+
+      const loadTelegramSettings = async () => {
+        try {
+          const res = await apiCall('telegram_settings');
+          applyTelegramSettings(res.data);
+        } catch (e) {
+          showStatus(els.telegramStatus, `${t('msg.tg_err')}: ${e.message}`, true);
+        }
+      };
+
+      els.telegramForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const res = await apiCall('update_telegram_settings', collectTelegramSettings());
+          applyTelegramSettings(res.data);
+          showStatus(els.telegramStatus, t('msg.tg_saved'));
+        } catch (e) {
+          showStatus(els.telegramStatus, e.message, true);
+        }
+      });
+
+      els.telegramTestBtn.addEventListener('click', async () => {
+        try {
+          await apiCall('test_telegram', collectTelegramSettings());
+          showStatus(els.telegramStatus, t('msg.tg_test'));
+        } catch (e) {
+          showStatus(els.telegramStatus, e.message, true);
+        }
+      });
+
+      const obsStreamKey = () => els.obsStreamKey.value.trim() || 'livestream';
+
+      const normalizeHost = (value = '') => {
+        const raw = String(value || '').trim();
+        if (!raw) return (window.location.hostname || 'NAS-IP') + ':1935';
+        try {
+          return new URL(raw.includes('://') ? raw : `http://${raw}`).host || raw;
+        } catch (e) {
+          return raw.replace(/^https?:\/\//i, '').split('/')[0] || window.location.hostname || 'NAS-IP';
+        }
+      };
+
+      const normalizeOrigin = (value = '') => {
+        const raw = String(value || '').trim().replace(/\/+$/, '');
+        if (!raw) {
+          const host = window.location.hostname || 'NAS-IP';
+          return `${window.location.protocol || 'http:'}//${host}:18088`;
+        }
+        try {
+          const url = new URL(raw.includes('://') ? raw : `${window.location.protocol || 'http:'}//${raw}`);
+          return url.origin;
+        } catch (e) {
+          return raw.includes('://') ? raw : `${window.location.protocol || 'http:'}//${raw}`;
+        }
+      };
+
+      const refreshObsUrls = () => {
+        const rtmpHost = normalizeHost(els.obsRtmpHost.value);
+        const playbackOrigin = normalizeOrigin(els.obsPlaybackOrigin.value);
+        const key = obsStreamKey();
+        const encodedKey = encodeURIComponent(key);
+        localStorage.setItem('obs_rtmp_host', els.obsRtmpHost.value.trim());
+        localStorage.setItem('obs_playback_origin', els.obsPlaybackOrigin.value.trim());
+        els.obsServerUrl.value = `rtmp://${rtmpHost}/live`;
+        els.obsStreamKeyDisplay.value = key;
+        els.obsHlsUrl.value = `${playbackOrigin}/live/${encodedKey}.m3u8`;
+        els.obsFlvUrl.value = `${playbackOrigin}/live/${encodedKey}.flv`;
+        renderObsRoutes();
+      };
+
+      const obsRouteUrls = (route) => {
+        const origin = normalizeOrigin(els.obsPlaybackOrigin.value);
+        const slug = encodeURIComponent(route.public_slug);
+        return {
+          hls: `${origin}/h/${slug}/index.m3u8`,
+          flv: `${origin}/h/${slug}.flv`
+        };
+      };
+
+      const renderObsRoutes = () => {
+        if (!els.obsRouteList) return;
+        if (!obsRoutes.length) {
+          els.obsRouteList.innerHTML = `<p class="hint">${t('msg.no_routes')}</p>`;
+          return;
+        }
+        els.obsRouteList.innerHTML = '';
+        obsRoutes.forEach(route => {
+          const urls = obsRouteUrls(route);
+          const card = document.createElement('div');
+          card.className = 'obs-route-card';
+          card.innerHTML = `
+            <div class="obs-route-title">
+              <span>${escapeHtml(route.stream_key)}</span>
+              <span class="stream-meta">/${escapeHtml(route.public_slug)}</span>
+            </div>
+            <div class="obs-route-links">
+              <div class="obs-copy-row">
+                <input type="text" value="${escapeAttr(urls.hls)}" readonly onclick="this.select()">
+                <button type="button" class="btn-secondary obs-route-copy-btn" data-url="${escapeAttr(urls.hls)}">${t('btn.copy_hls')}</button>
+              </div>
+              <div class="obs-copy-row">
+                <input type="text" value="${escapeAttr(urls.flv)}" readonly onclick="this.select()">
+                <button type="button" class="btn-secondary obs-route-copy-btn" data-url="${escapeAttr(urls.flv)}">${t('btn.copy_flv')}</button>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn-success obs-route-use-btn" data-kind="hls" data-key="${escapeAttr(route.stream_key)}" data-url="${escapeAttr(urls.hls)}">${t('btn.use_hls')}</button>
+              <button type="button" class="btn-secondary obs-route-use-btn" data-kind="flv" data-key="${escapeAttr(route.stream_key)}" data-url="${escapeAttr(urls.flv)}">${t('btn.use_flv')}</button>
+              <button type="button" class="btn-danger obs-route-delete-btn" data-id="${escapeAttr(route.id)}">${t('btn.delete')}</button>
+            </div>
+          `;
+          els.obsRouteList.appendChild(card);
+        });
+      };
+
+      const loadObsRoutes = async () => {
+        try {
+          const res = await apiCall('list_obs_routes');
+          obsRoutes = res.data || [];
+          renderObsRoutes();
+        } catch (e) {
+          showStatus(els.obsStatus, `${t('msg.obs_err')}: ${e.message}`, true);
+        }
+      };
+
+      const appendObsLink = (kind) => {
+        const url = kind === 'flv' ? els.obsFlvUrl.value : els.obsHlsUrl.value;
+        const type = kind === 'flv' ? 'flv' : 'm3u8';
+        const name = kind === 'flv' ? t('obs.local_flv') : t('obs.local_hls');
+        const rows = Array.from(els.linksContainer.children);
+        if (rows.length === 1) {
+          const firstName = rows[0].querySelector('.l-name')?.value.trim();
+          const firstUrl = rows[0].querySelector('.l-url')?.value.trim();
+          if (!firstName && !firstUrl) rows[0].remove();
+        }
+        if (!els.nameInput.value.trim()) els.nameInput.value = `${t('obs.default_name')} ${obsStreamKey()}`;
+        addLinkUI(name, url, '', '', type);
+        document.getElementById('editor-modal').classList.remove('hidden');
+        showStatus(els.obsStatus, t('obs.filled_in').replace('{name}', name));
+      };
+
+      let statsLiveTimer = null;
+
+      const refreshStreamStats = async () => {
+        try {
+          const res = await apiCall('stream_stats_summary');
+          streamStats = res.data || {};
+          document.querySelectorAll('.stream-stats-live').forEach(span => {
+            const s = streamStats[String(span.dataset.sid)] || {};
+            span.textContent = t('ss.live_stat').replace('{a}', Number(s.online || 0)).replace('{b}', Number(s.today_views || 0)).replace('{c}', Number(s.total_views || 0));
+          });
+        } catch (e) {}
+      };
+
+      const startStatsLive = () => {
+        clearInterval(statsLiveTimer);
+        statsLiveTimer = setInterval(refreshStreamStats, 5000);
+      };
+
+      const loadStreams = async () => {
+        try {
+          const res = await apiCall('list_admin');
+          allStreams = res.data;
+          try {
+            const statsRes = await apiCall('stream_stats_summary');
+            streamStats = statsRes.data || {};
+          } catch (statsError) {
+            streamStats = {};
+            console.warn('Load stream stats failed:', statsError);
+          }
+          renderList();
+          startStatsLive();
+          window.setTimeout(checkSavedStreams, 100);
+        } catch (e) {
+          alert(e.message);
+        }
+      };
+
+      const streamLinks = (stream) => {
+        try {
+          return JSON.parse(stream.links_json || '[]');
+        } catch (e) {
+          return [];
+        }
+      };
+
+      const streamMatchesFilter = (stream) => {
+        const links = streamLinks(stream);
+        const label = String(stream.stream_label || 'LIVE').toUpperCase();
+        // always apply sub-menu label filter
+        if (streamLabelFilter === 'live' && label === 'ARCHIVE') return false;
+        if (streamLabelFilter === 'archive' && label !== 'ARCHIVE') return false;
+        const enabled = Number(stream.is_enabled ?? 1) === 1;
+        const hasPassword = !!String(stream.stream_password || '');
+        switch (streamFilter) {
+          case 'enabled': return enabled;
+          case 'disabled': return !enabled;
+          case 'public': return !hasPassword;
+          case 'password': return hasPassword;
+          case 'hidden': return Number(stream.is_hidden || 0) === 1;
+          case 'telegram': return Number(stream.tg_notify_enabled || 0) === 1;
+          case 'key': return links.some(link => link.key && link.key.length > 0);
+          default: return true;
+        }
+      };
+
+      const streamMatchesSearch = (stream) => {
+        const query = streamSearchQuery.trim().toLowerCase();
+        if (!query) return true;
+        const links = streamLinks(stream);
+        const haystack = [
+          stream.event_name,
+          stream.id,
+          stream.public_id,
+          ...links.flatMap(link => [link.name, link.url])
+        ].join(' ').toLowerCase();
+        return haystack.includes(query);
+      };
+
+      const compareStreams = (a, b) => {
+        const linksA = streamLinks(a).length;
+        const linksB = streamLinks(b).length;
+        const labelOrder = lbl => lbl === 'LIVE' ? 0 : lbl === 'ARCHIVE' ? 1 : 2;
+        const labelA = String(a.stream_label || 'LIVE').toUpperCase();
+        const labelB = String(b.stream_label || 'LIVE').toUpperCase();
+        const fallback = (labelOrder(labelA) - labelOrder(labelB))
+          || (Number(a.sort_order ?? 99999) - Number(b.sort_order ?? 99999))
+          || (Number(b.id) - Number(a.id));
+        switch (streamSort) {
+          case 'created_desc': return Number(b.created_at || 0) - Number(a.created_at || 0);
+          case 'updated_desc': return Number(b.updated_at || 0) - Number(a.updated_at || 0);
+          case 'name_asc': return String(a.event_name || '').localeCompare(String(b.event_name || ''), 'zh-CN');
+          case 'links_desc': return (linksB - linksA) || fallback;
+          default: return fallback;
+        }
+      };
+
+      const currentStreamList = () => allStreams
+        .filter(stream => streamMatchesFilter(stream) && streamMatchesSearch(stream))
+        .sort(compareStreams);
+
+      const renderList = () => {
+        els.list.innerHTML = '';
+        const displayStreams = currentStreamList();
+        const total = displayStreams.length;
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        currentPage = Math.min(Math.max(1, currentPage), totalPages);
+        const start = (currentPage - 1) * pageSize;
+        const pageStreams = displayStreams.slice(start, start + pageSize);
+        els.streamCount.textContent = t('streams.showing').replace('{shown}', total).replace('{total}', allStreams.length);
+        els.pageInfo.textContent = t('page.page_of').replace('{cur}', currentPage).replace('{total}', totalPages);
+        els.prevPage.disabled = currentPage <= 1;
+        els.nextPage.disabled = currentPage >= totalPages;
+        if (!pageStreams.length) {
+          els.streamCount.textContent = t('streams.showing').replace('{shown}', 0).replace('{total}', allStreams.length);
+          els.list.innerHTML = `<p class="hint">${t('streams.no_match')}</p>`;
+          return;
+        }
+        pageStreams.forEach(s => {
+            const links = streamLinks(s);
+            const hasKey = links.some(l => l.key && l.key.length > 0);
+            const tgEnabled = Number(s.tg_notify_enabled || 0) === 1;
+            const liveEnabled = Number(s.is_enabled ?? 1) === 1;
+            const streamLabel = String(s.stream_label || 'LIVE').toUpperCase() === 'ARCHIVE' ? 'ARCHIVE' : 'LIVE';
+            const publicId = s.public_id || s.id;
+            const stats = streamStats[String(s.id)] || {};
+            const statsSpan = `<span class="stream-stats-live" data-sid="${s.id}">${t('ss.live_stat').replace('{a}', Number(stats.online || 0)).replace('{b}', Number(stats.today_views || 0)).replace('{c}', Number(stats.total_views || 0))}</span>`;
+            const playerUrl = `${window.location.origin}/player.html?id=${encodeURIComponent(publicId)}`;
+            const cachedProbe = savedProbeCache.get(String(s.id));
+            const probeState = liveEnabled ? (cachedProbe?.state || 'is-checking') : 'is-offline';
+            const probeMessage = liveEnabled ? (cachedProbe?.message || t('probe.waiting')) : t('probe.closed');
+            const probeComplete = liveEnabled ? (cachedProbe?.complete ? '1' : '') : '1';
+            const div = document.createElement('div');
+            div.className = 'stream-row';
+            div.dataset.id = String(s.id);
+            div.dataset.label = streamLabel;
+            div.setAttribute('draggable', 'true');
+            div.innerHTML = `
+              <span class="drag-handle" draggable="false">⠿</span>
+              <div class="stream-main">
+                <div class="stream-name">
+                  ${escapeHtml(s.event_name)}
+                  ${s.is_hidden ? `<span class="badge">${t('badge.hidden')}</span>` : ''}
+                  ${liveEnabled ? '' : `<span class="badge badge-closed">${t('badge.closed')}</span>`}
+                  ${hasKey ? '<span class="badge badge-key">KeyOverride</span>' : ''}
+                  ${tgEnabled ? `<span class="badge badge-tg">${t('badge.tg')}</span>` : ''}
+                </div>
+                <div class="stream-meta">${links.length} ${t('meta.links')} | ${t('meta.id')} ${s.id} | ${t('meta.pub_id')} ${escapeHtml(publicId)} | ${statsSpan}</div>
+                <div class="stream-live-state ${escapeAttr(probeState)}" data-stream-probe="${escapeAttr(s.id)}" data-probe-state="${escapeAttr(probeState)}" data-probe-message="${escapeAttr(probeMessage)}" data-probe-complete="${escapeAttr(probeComplete)}">${escapeHtml(probeMessage)}</div>
+              </div>
+              <div class="actions stream-actions">
+                <button data-id="${s.id}" data-url="${escapeAttr(playerUrl)}" class="open-btn btn-secondary" type="button">${t('btn.open')}</button>
+                <button data-id="${s.id}" class="edit-btn btn-secondary" type="button">${t('btn.edit')}</button>
+                <details class="action-menu">
+                  <summary class="more-btn">${t('action.more')}</summary>
+                  <div class="action-menu-panel">
+                    <button data-id="${s.id}" data-name="${escapeAttr(s.event_name)}" class="stream-stat-btn btn-secondary" type="button">${t('action.stats')}</button>
+                    <button data-id="${s.id}" data-public-id="${escapeAttr(publicId)}" class="copy-btn btn-success" type="button">${t('action.copy_link')}</button>
+                    <button data-id="${s.id}" data-enabled="${liveEnabled ? '1' : '0'}" class="live-toggle-btn ${liveEnabled ? 'btn-warning' : 'btn-success'}" type="button">${liveEnabled ? t('action.disable') : t('action.enable')}</button>
+                    <button data-id="${s.id}" data-enabled="${tgEnabled ? '1' : '0'}" class="tg-toggle-btn ${tgEnabled ? 'btn-success' : 'btn-secondary'}" type="button" title="${tgEnabled ? t('action.push_on') : t('action.push_off')}" aria-label="${tgEnabled ? t('action.push_on') : t('action.push_off')}">${t('action.push')}</button>
+                    <button data-id="${s.id}" class="del-btn btn-danger" type="button">${t('action.delete')}</button>
+                  </div>
+                </details>
+              </div>
+            `;
+            els.list.appendChild(div);
+        });
+        setupDragHandles();
+      };
+
+      els.pageSize.addEventListener('change', () => {
+        pageSize = Number(els.pageSize.value) || 5;
+        localStorage.setItem('admin_stream_page_size', String(pageSize));
+        currentPage = 1;
+        renderList();
+      });
+
+      els.streamSearch.addEventListener('input', () => {
+        streamSearchQuery = els.streamSearch.value;
+        currentPage = 1;
+        renderList();
+      });
+
+      els.streamFilter.addEventListener('change', () => {
+        streamFilter = els.streamFilter.value;
+        currentPage = 1;
+        renderList();
+      });
+
+      els.streamSort.addEventListener('change', () => {
+        streamSort = els.streamSort.value;
+        currentPage = 1;
+        renderList();
+      });
+
+      els.streamReset.addEventListener('click', () => {
+        streamSearchQuery = '';
+        streamFilter = 'all';
+        streamSort = 'default';
+        els.streamSearch.value = '';
+        els.streamFilter.value = streamFilter;
+        els.streamSort.value = streamSort;
+        currentPage = 1;
+        renderList();
+      });
+
+      els.prevPage.addEventListener('click', () => {
+        currentPage = Math.max(1, currentPage - 1);
+        renderList();
+      });
+
+      els.nextPage.addEventListener('click', () => {
+        const totalPages = Math.max(1, Math.ceil(currentStreamList().length / pageSize));
+        currentPage = Math.min(totalPages, currentPage + 1);
+        renderList();
+      });
+
+      els.list.addEventListener('click', async (e) => {
+        const id = e.target.dataset.id;
+        if (e.target.classList.contains('more-btn')) {
+          const currentMenu = e.target.closest('.action-menu');
+          els.list.querySelectorAll('.action-menu[open]').forEach(menu => {
+            if (menu !== currentMenu) menu.removeAttribute('open');
+          });
+        }
+        if (!id) return;
+
+        if (e.target.classList.contains('del-btn')) {
+          if (confirm(t('confirm.delete'))) {
+            await apiCall('delete', { id });
+            loadStreams();
+          }
+        }
+        if (e.target.classList.contains('copy-btn')) {
+          const publicId = e.target.dataset.publicId || id;
+          const url = `${window.location.origin}/player.html?id=${encodeURIComponent(publicId)}`;
+          await copyText(url);
+          e.target.closest('.action-menu')?.removeAttribute('open');
+          alert(t('alert.link_copied'));
+        }
+        if (e.target.classList.contains('open-btn')) {
+          window.open(e.target.dataset.url, '_blank', 'noopener');
+        }
+        if (e.target.classList.contains('live-toggle-btn')) {
+          const enabled = e.target.dataset.enabled !== '1';
+          try {
+            const res = await apiCall('set_stream_enabled', { id, enabled });
+            const stream = allStreams.find(i => String(i.id) === String(id));
+            if (stream) stream.is_enabled = enabled ? 1 : 0;
+            if (!enabled) {
+              setSavedProbeStatus(id, 'is-offline', t('probe.closed'));
+            } else if (res.data) {
+              applyProbeResult(id, res.data);
+            }
+            renderList();
+            if (!enabled) {
+              setSavedProbeStatus(id, 'is-offline', t('probe.closed'));
+            } else if (res.data) {
+              applyProbeResult(id, res.data);
+            } else if (stream) {
+              checkSingleSavedStream(stream, true);
+            }
+          } catch (err) {
+            alert(err.message);
+          }
+        }
+        if (e.target.classList.contains('tg-toggle-btn')) {
+          const enabled = e.target.dataset.enabled !== '1';
+          try {
+            await apiCall('set_stream_tg_notify', { id, enabled });
+            const stream = allStreams.find(i => String(i.id) === String(id));
+            if (stream) stream.tg_notify_enabled = enabled ? 1 : 0;
+            renderList();
+            window.setTimeout(checkSavedStreams, 100);
+          } catch (err) {
+            alert(err.message);
+          }
+        }
+        if (e.target.classList.contains('edit-btn')) {
+          const s = allStreams.find(i => String(i.id) === String(id));
+          if (!s) return;
+          openEditorModal(s);
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        if (e.target.closest('.action-menu')) return;
+        els.list.querySelectorAll('.action-menu[open]').forEach(menu => {
+          menu.removeAttribute('open');
+          menu.closest('.stream-row')?.classList.remove('menu-open');
+        });
+      });
+
+      function setupDragHandles() {
+        let dragSrc = null;
+        let _dragFromHandle = false;
+        els.list.querySelectorAll('.stream-row').forEach(row => {
+          row.querySelector('.drag-handle')?.addEventListener('mousedown', () => { _dragFromHandle = true; });
+          row.addEventListener('dragstart', e => {
+            if (!_dragFromHandle) { e.preventDefault(); return; }
+            dragSrc = row;
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+          });
+          row.addEventListener('dragend', () => {
+            _dragFromHandle = false;
+            row.classList.remove('dragging');
+            els.list.querySelectorAll('.stream-row').forEach(r => r.classList.remove('drag-over'));
+            dragSrc = null;
+          });
+          row.addEventListener('dragover', e => {
+            e.preventDefault();
+            if (row !== dragSrc && row.dataset.label === dragSrc?.dataset.label) {
+              els.list.querySelectorAll('.stream-row').forEach(r => r.classList.remove('drag-over'));
+              row.classList.add('drag-over');
+            }
+          });
+          row.addEventListener('drop', async e => {
+            e.preventDefault();
+            if (!dragSrc || dragSrc === row) return;
+            if (row.dataset.label !== dragSrc.dataset.label) return;
+            const srcIdx = [...els.list.children].indexOf(dragSrc);
+            const dstIdx = [...els.list.children].indexOf(row);
+            if (srcIdx < dstIdx) els.list.insertBefore(dragSrc, row.nextSibling);
+            else els.list.insertBefore(dragSrc, row);
+            const label = row.dataset.label;
+            const newIds = [...els.list.querySelectorAll(`.stream-row[data-label="${label}"]`)]
+              .map(r => Number(r.dataset.id));
+            try {
+              await apiCall('reorder_streams', { label, ids: newIds });
+              newIds.forEach((id, idx) => {
+                const s = allStreams.find(x => x.id === id);
+                if (s) s.sort_order = idx;
+              });
+            } catch (err) {
+              alert(t('msg.sort_err') + '：' + err.message);
+              renderList();
+            }
+          });
+        });
+      }
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!document.getElementById('editor-modal').classList.contains('hidden')) {
+          closeEditorModal();
+          return;
+        }
+        els.list.querySelectorAll('.action-menu[open]').forEach(menu => {
+          menu.removeAttribute('open');
+          menu.closest('.stream-row')?.classList.remove('menu-open');
+        });
+      });
+
+      els.list.addEventListener('toggle', (e) => {
+        if (!e.target.classList.contains('action-menu')) return;
+        const row = e.target.closest('.stream-row');
+        if (row) row.classList.toggle('menu-open', e.target.open);
+        if (!e.target.open) return;
+        els.list.querySelectorAll('.stream-row.menu-open').forEach(openRow => {
+          if (openRow !== row) openRow.classList.remove('menu-open');
+        });
+      }, true);
+
+      els.form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const links = Array.from(els.linksContainer.children).map(row => ({
+          name: row.querySelector('.l-name').value,
+          type: row.querySelector('.l-type').value,
+          url: row.querySelector('.l-url').value,
+          key: row.querySelector('.l-key').value.trim(),
+          clearkey: row.querySelector('.l-clearkey').value.trim()
+        })).filter(l => l.name && l.url);
+
+        const payload = {
+          id: els.idInput.value,
+          eventName: els.nameInput.value,
+          streamLabel: els.streamLabelInput.value,
+          streamPassword: els.passInput.value,
+          isHidden: els.hiddenInput.checked,
+          links
+        };
+
+        try {
+          await apiCall(payload.id ? 'update' : 'add', payload);
+          closeEditorModal();
+          loadStreams();
+        } catch (e) {
+          alert(e.message);
+        }
+      });
+
+      const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '') => {
+        const div = document.createElement('div');
+        div.className = 'link-row';
+        div.innerHTML = `
+          <input class="l-name" placeholder="${t('ph.link_name')}" value="${escapeAttr(name)}">
+          <select class="l-type">
+            <option value="" ${type === '' ? 'selected' : ''}>${t('type.auto')}</option>
+            <option value="m3u8" ${type === 'm3u8' ? 'selected' : ''}>HLS</option>
+            <option value="flv" ${type === 'flv' ? 'selected' : ''}>FLV</option>
+            <option value="dash" ${type === 'dash' ? 'selected' : ''}>DASH</option>
+          </select>
+          <div class="url-field">
+            <input class="l-url" placeholder="${t('ph.link_url')}" value="${escapeAttr(url)}">
+            <div class="stream-check-status" aria-live="polite"></div>
+          </div>
+          <textarea class="l-key" rows="2" placeholder="${t('ph.key_aes')}">${escapeHtml(key)}</textarea>
+          <textarea class="l-clearkey" rows="2" placeholder="${t('ph.clearkey')}">${escapeHtml(clearkey)}</textarea>
+          <button type="button" class="btn-danger" onclick="this.parentElement.remove()">×</button>
+        `;
+        els.linksContainer.appendChild(div);
+        div.querySelector('.l-url').addEventListener('input', () => scheduleLinkRowCheck(div));
+        div.querySelector('.l-url').addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
+        div.querySelector('.l-type').addEventListener('change', () => scheduleLinkRowCheck(div, 0));
+        if (url) scheduleLinkRowCheck(div, 250);
+      };
+
+      document.getElementById('add-link-btn').onclick = () => addLinkUI();
+      els.cancelBtn.onclick = closeEditorModal;
+      document.getElementById('add-stream-btn').addEventListener('click', () => {
+        openEditorModal(null, activeRecordsLabel);
+      });
+      const _savedRtmpHost = localStorage.getItem('obs_rtmp_host');
+      els.obsRtmpHost.value = _savedRtmpHost !== null ? _savedRtmpHost : (localStorage.getItem('obs_public_host') || '');
+      els.obsPlaybackOrigin.value = localStorage.getItem('obs_playback_origin') || '';
+      els.obsRtmpHost.placeholder = (window.location.hostname || 'NAS-IP') + ':1935';
+      els.obsPlaybackOrigin.placeholder = `${window.location.protocol || 'http:'}//${window.location.hostname || 'NAS-IP'}:18088`;
+      els.obsRtmpHost.addEventListener('input', refreshObsUrls);
+      els.obsPlaybackOrigin.addEventListener('input', refreshObsUrls);
+      els.obsStreamKey.addEventListener('input', refreshObsUrls);
+      document.querySelectorAll('.obs-copy-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const target = document.getElementById(btn.dataset.copyTarget);
+          await copyText(target.value);
+          showStatus(els.obsStatus, t('msg.copied'));
+        });
+      });
+      els.obsRouteAddBtn.addEventListener('click', async () => {
+        const streamKey = els.obsRouteKey.value.trim();
+        if (!streamKey) {
+          showStatus(els.obsStatus, t('msg.no_key'), true);
+          return;
+        }
+        try {
+          await apiCall('add_obs_route', { streamKey });
+          els.obsRouteKey.value = '';
+          await loadObsRoutes();
+          showStatus(els.obsStatus, t('msg.route_added'));
+        } catch (e) {
+          showStatus(els.obsStatus, e.message, true);
+        }
+      });
+      els.obsRouteList.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('obs-route-copy-btn')) {
+          await copyText(e.target.dataset.url || '');
+          showStatus(els.obsStatus, t('msg.copied'));
+        }
+        if (e.target.classList.contains('obs-route-use-btn')) {
+          const kind = e.target.dataset.kind || 'hls';
+          const type = kind === 'flv' ? 'flv' : 'm3u8';
+          const name = kind === 'flv' ? t('obs.hidden_flv') : t('obs.hidden_hls');
+          if (!els.nameInput.value.trim()) els.nameInput.value = `${t('obs.default_name')} ${e.target.dataset.key || ''}`.trim();
+          addLinkUI(name, e.target.dataset.url || '', '', '', type);
+          document.getElementById('editor-modal').classList.remove('hidden');
+          showStatus(els.obsStatus, t('obs.filled_in').replace('{name}', name));
+        }
+        if (e.target.classList.contains('obs-route-delete-btn')) {
+          if (!confirm(t('confirm.delete_route'))) return;
+          try {
+            await apiCall('delete_obs_route', { id: e.target.dataset.id });
+            await loadObsRoutes();
+            showStatus(els.obsStatus, t('msg.route_deleted'));
+          } catch (err) {
+            showStatus(els.obsStatus, err.message, true);
+          }
+        }
+      });
+      document.getElementById('use-obs-hls-btn').addEventListener('click', () => appendObsLink('hls'));
+      document.getElementById('use-obs-flv-btn').addEventListener('click', () => appendObsLink('flv'));
+      window.setInterval(checkFormLinks, probeIntervalMs);
+      window.setInterval(checkSavedStreams, probeIntervalMs);
+
+      function resetForm() {
+        els.form.reset();
+        els.idInput.value = '';
+        els.title.innerText = t('editor.add_title');
+        els.streamLabelInput.value = 'LIVE';
+        els.cancelBtn.classList.add('hidden');
+        els.linksContainer.innerHTML = '';
+        addLinkUI();
+      }
+
+      function openEditorModal(stream, defaultLabel) {
+        if (stream) {
+          els.title.innerText = t('editor.edit_title');
+          els.idInput.value = stream.id;
+          els.nameInput.value = stream.event_name;
+          els.streamLabelInput.value = String(stream.stream_label || 'LIVE').toUpperCase() === 'ARCHIVE' ? 'ARCHIVE' : 'LIVE';
+          els.passInput.value = stream.stream_password || '';
+          els.hiddenInput.checked = stream.is_hidden == 1;
+          els.cancelBtn.classList.remove('hidden');
+          els.linksContainer.innerHTML = '';
+          const links = JSON.parse(stream.links_json || '[]');
+          links.forEach(l => addLinkUI(l.name, l.url, l.key, l.clearkey, l.type));
+          if (links.length === 0) addLinkUI();
+        } else {
+          resetForm();
+          if (defaultLabel) {
+            els.streamLabelInput.value = String(defaultLabel).toUpperCase() === 'ARCHIVE' ? 'ARCHIVE' : 'LIVE';
+          }
+        }
+        document.getElementById('editor-modal').classList.remove('hidden');
+      }
+
+      function closeEditorModal() {
+        document.getElementById('editor-modal').classList.add('hidden');
+        resetForm();
+      }
+
+      document.getElementById('editor-modal').addEventListener('click', e => {
+        if (e.target === e.currentTarget) closeEditorModal();
+      });
+      document.getElementById('editor-modal-close').addEventListener('click', closeEditorModal);
+
+      refreshObsUrls();
+      resetForm();
+    });
+  </script>
+
+  <!-- Editor modal -->
+  <div id="editor-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-head">
+        <h3 id="form-title" style="margin:0;font-size:1.05rem;font-weight:900;" data-i18n="editor.add_title">新增直播</h3>
+        <button type="button" id="editor-modal-close" class="modal-close-btn">✕</button>
+      </div>
+      <form id="stream-form">
+        <input type="hidden" id="stream-id">
+        <div class="form-grid">
+          <div>
+            <label data-i18n="form.stream_name">直播名称</label>
+            <input type="text" id="event-name" required>
+          </div>
+          <div>
+            <label data-i18n="form.stream_pw">访问密码 (留空则公开)</label>
+            <input type="text" id="stream-password">
+          </div>
+          <div>
+            <label data-i18n="form.stream_type">直播类型</label>
+            <select id="stream-label">
+              <option value="LIVE">LIVE</option>
+              <option value="ARCHIVE">ARCHIVE</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top: 22px;">
+          <h3 data-i18n="h3.links">视角配置</h3>
+          <p class="hint" data-i18n="hint.links">填写格式：视角名称 | 类型 | 播放链接 | Key Override | ClearKey 信息</p>
+          <div id="links-container"></div>
+          <button type="button" id="add-link-btn" class="btn-success" data-i18n="btn.add_link">+ 添加视角</button>
+        </div>
+        <label style="display: flex; align-items: center; gap: 10px; margin-top: 22px; cursor: pointer;">
+          <input type="checkbox" id="is-hidden" style="width: auto;">
+          <span data-i18n="form.hide_home">不在主页显示</span>
+        </label>
+        <div class="actions">
+          <button type="submit" id="save-btn" class="btn-primary" data-i18n="btn.save">保 存</button>
+          <button type="button" id="cancel-btn" class="btn-secondary hidden" data-i18n="btn.cancel">取 消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Stream stats modal -->
+  <div id="stream-stat-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-head">
+        <h2 id="stream-stat-modal-title" style="font-size:1.05rem;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:480px;" data-i18n="stat.title">直播统计</h2>
+        <button type="button" id="stream-stat-modal-close" class="btn-secondary" style="padding:6px 10px;">✕</button>
+      </div>
+      <div class="stream-stat-summary-grid">
+        <div class="stream-stat-mini-card"><div class="stream-stat-mini-lbl" data-i18n="stat.online">当前在线</div><div class="stream-stat-mini-val" id="ss-online">—</div></div>
+        <div class="stream-stat-mini-card"><div class="stream-stat-mini-lbl" data-i18n="stat.today">今日观看</div><div class="stream-stat-mini-val" id="ss-today">—</div></div>
+        <div class="stream-stat-mini-card"><div class="stream-stat-mini-lbl" data-i18n="stat.total">历史总量</div><div class="stream-stat-mini-val" id="ss-total">—</div></div>
+        <div class="stream-stat-mini-card"><div class="stream-stat-mini-lbl" data-i18n="stat.unique">独立访客</div><div class="stream-stat-mini-val" id="ss-unique">—</div></div>
+      </div>
+      <div class="dash-two-col" style="margin-bottom:16px;">
+        <div>
+          <div style="font-weight:800;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;" data-i18n="stat.device">设备分布</div>
+          <div class="dash-hbar-list">
+            <div class="dash-hbar-row"><span class="dash-hbar-icon">💻</span><span class="dash-hbar-lbl" data-i18n="device.desktop">桌面端</span><div class="dash-hbar-track"><div class="dash-hbar-fill" id="ss-dh-desktop" style="width:0%;background:var(--blue)"></div></div><span class="dash-hbar-pct" id="ss-dh-desktop-pct">—</span></div>
+            <div class="dash-hbar-row"><span class="dash-hbar-icon">📱</span><span class="dash-hbar-lbl" data-i18n="device.mobile">移动端</span><div class="dash-hbar-track"><div class="dash-hbar-fill" id="ss-dh-mobile" style="width:0%;background:var(--mint)"></div></div><span class="dash-hbar-pct" id="ss-dh-mobile-pct">—</span></div>
+            <div class="dash-hbar-row"><span class="dash-hbar-icon">📋</span><span class="dash-hbar-lbl" data-i18n="device.tablet">平板端</span><div class="dash-hbar-track"><div class="dash-hbar-fill" id="ss-dh-tablet" style="width:0%;background:var(--gold)"></div></div><span class="dash-hbar-pct" id="ss-dh-tablet-pct">—</span></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+            <div style="font-weight:800;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;" data-i18n="stat.timeseries">时间分布</div>
+            <div class="dash-range-tabs" id="ss-range-tabs">
+              <button type="button" class="dash-range-btn" data-range="today" data-i18n="range.today">今日</button>
+              <button type="button" class="dash-range-btn active" data-range="7d" data-i18n="range.7d_short">7天</button>
+              <button type="button" class="dash-range-btn" data-range="30d" data-i18n="range.30d_short">30天</button>
+            </div>
+          </div>
+          <div class="dash-bar-chart" id="ss-bar-chart" style="height:90px;"></div>
+          <div class="dash-bar-axis" id="ss-bar-axis"></div>
+        </div>
+      </div>
+      <div class="dash-two-col" style="margin-bottom:16px;">
+        <div>
+          <div style="font-weight:800;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;" data-i18n="stat.browser">浏览器分布</div>
+          <div class="dash-hbar-list" id="ss-browser-list"><div style="color:var(--muted);font-size:.82rem;" data-i18n="status.loading">加载中...</div></div>
+        </div>
+        <div>
+          <div style="font-weight:800;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;" data-i18n="stat.os">操作系统分布</div>
+          <div class="dash-hbar-list" id="ss-os-list"><div style="color:var(--muted);font-size:.82rem;" data-i18n="status.loading">加载中...</div></div>
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <div style="font-weight:800;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;" data-i18n="stat.geo">地理分布</div>
+          <div class="dash-range-tabs" id="ss-geo-range">
+            <button class="dash-range-btn" data-range="today" data-i18n="range.today">今日</button>
+            <button class="dash-range-btn active" data-range="30d" data-i18n="range.30d">近 30 天</button>
+            <button class="dash-range-btn" data-range="all" data-i18n="range.all">全部</button>
+          </div>
+        </div>
+        <div class="geo-map-canvas" id="ss-geo-map" style="height:240px;"></div>
+        <div class="geo-country-list" id="ss-geo-list"></div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-weight:800;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;" data-i18n="stat.sessions">最近会话</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <select id="ss-page-size" style="font-size:.78rem;color:var(--muted);background:var(--input);border:1px solid var(--line);border-radius:5px;padding:2px 6px;cursor:pointer;">
+              <option value="5" data-i18n="pgsz.5">5 条</option>
+              <option value="10" data-i18n="pgsz.10">10 条</option>
+              <option value="20" data-i18n="pgsz.20">20 条</option>
+              <option value="50" data-i18n="pgsz.50">50 条</option>
+              <option value="100" data-i18n="pgsz.100">100 条</option>
+            </select>
+            <span id="ss-live-indicator" class="live-badge" data-state="connecting">连接中...</span>
+          </div>
+        </div>
+        <div class="dash-range-tabs" id="ss-sort-tabs" style="margin-bottom:10px;flex-wrap:wrap;">
+          <button type="button" class="dash-range-btn active" data-sort-col="last_seen_at">最后活跃 ↓</button>
+          <button type="button" class="dash-range-btn" data-sort-col="started_at">开始时间</button>
+          <button type="button" class="dash-range-btn" data-sort-col="duration">时长</button>
+          <button type="button" class="dash-range-btn" data-sort-col="device_type">设备</button>
+          <button type="button" class="dash-range-btn" data-sort-col="browser">浏览器</button>
+          <button type="button" class="dash-range-btn" data-sort-col="ip_address">IP</button>
+        </div>
+        <div class="recent-sessions-list" id="ss-recent-list"><div style="color:var(--muted);text-align:center;padding:16px;" data-i18n="stat.loading">加载中...</div></div>
+        <div class="sessions-pagination" id="ss-sessions-pagination" style="display:none;">
+          <button type="button" id="ss-prev-page" class="btn-secondary" style="padding:6px 10px;" data-i18n="page.prev">上一页</button>
+          <span id="ss-page-info" class="page-info"></span>
+          <button type="button" id="ss-next-page" class="btn-secondary" style="padding:6px 10px;" data-i18n="page.next">下一页</button>
+          <span id="ss-total-count" class="page-info"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Dashboard & Stream Stats
+    // This is a separate <script> block from the main app block above.
+    // updateSortTabs() is defined inside this IIFE and registered as a
+    // _langChangeHooks callback from DOMContentLoaded below. It must live
+    // here (not in the main block) so the closure captures the correct
+    // local variables without cross-block ReferenceErrors.
+    (() => {
+      // Fetch helper for GET with extra query params (apiCall is scoped inside DOMContentLoaded)
+      const dashGet = async (action, extra = '') => {
+        const res = await fetch(`/api?action=${encodeURIComponent(action)}${extra}&_t=${Date.now()}`);
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') {
+          const base = data.code ? (t('err.' + data.code) || data.code) : (data.message || 'API Error');
+          const detail = data.detail ? ` (${data.detail})` : '';
+          throw new Error(base + detail);
+        }
+        return data;
+      };
+
+      const fmtDur = s => {
+        if (!s || s <= 0) return '—';
+        s = Math.round(s);
+        if (s < 60) return s + 's';
+        if (s < 3600) return Math.round(s / 60) + 'm';
+        return (s / 3600).toFixed(1) + 'h';
+      };
+      const fmtRel = ts => {
+        if (!ts) return '—';
+        const d = Math.floor(Date.now() / 1000) - ts;
+        if (d < 60) return t('rel.just_now');
+        if (d < 3600) return t('rel.min_ago').replace('{n}', Math.floor(d / 60));
+        if (d < 86400) return t('rel.hour_ago').replace('{n}', Math.floor(d / 3600));
+        return t('rel.day_ago').replace('{n}', Math.floor(d / 86400));
+      };
+      const fmtN = n => {
+        if (n >= 10000) return (n / 10000).toFixed(1) + 'w';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+        return String(n);
+      };
+
+      // ── Bar chart renderer ────────────────────────────────────────
+      function renderBarChart(chartEl, axisEl, buckets, range, refStart, bucketSecs) {
+        chartEl.innerHTML = '';
+        axisEl.innerHTML = '';
+        const maxVal = Math.max(...buckets, 1);
+        buckets.forEach((val, i) => {
+          const pct = Math.max(val / maxVal * 100, val > 0 ? 2 : 0);
+          let label = '', tip = '';
+          if (range === 'today') {
+            label = i % 6 === 0 ? i + 'h' : '';
+            tip = i + ':00  ' + val + ' ' + t('chart.unit');
+          } else {
+            const dt = new Date((refStart + i * bucketSecs) * 1000);
+            const m = dt.getMonth() + 1, d2 = dt.getDate();
+            if (range === '7d') {
+              if (LANG === 'zh') {
+                const days = ['日','一','二','三','四','五','六'];
+                label = '周' + days[dt.getDay()];
+              } else {
+                const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                label = days[dt.getDay()];
+              }
+            } else {
+              if (LANG === 'zh') {
+                label = i % 5 === 0 ? (i === 0 ? '30天前' : i === 29 ? '今天' : (29 - i) + '天前') : '';
+              } else {
+                label = i % 5 === 0 ? (i === 0 ? '-30d' : i === 29 ? 'today' : '-' + (29 - i) + 'd') : '';
+              }
+            }
+            tip = m + '/' + d2 + '  ' + val + ' ' + t('chart.unit');
+          }
+          const wrap = document.createElement('div'); wrap.className = 'dash-bar-col-wrap';
+          const tipEl = document.createElement('div'); tipEl.className = 'dash-bar-tip'; tipEl.textContent = tip;
+          const bar = document.createElement('div'); bar.className = 'dash-bar-col'; bar.style.height = pct + '%';
+          wrap.appendChild(tipEl); wrap.appendChild(bar);
+          chartEl.appendChild(wrap);
+          const lbl = document.createElement('div'); lbl.className = 'dash-bar-axis-lbl'; lbl.textContent = label;
+          axisEl.appendChild(lbl);
+        });
+      }
+
+      // ── Dashboard ─────────────────────────────────────────────────
+      let dashRange = localStorage.getItem('dash_ts_range') || 'today';
+      let dashEventSource = null;
+
+      function setDashLiveIndicator(state) {
+        const el = document.getElementById('dash-live-indicator');
+        if (!el) return;
+        el.dataset.state = state;
+        if (state === 'live')        el.innerHTML = `<span class="live-dot"></span>${t('live.live')}`;
+        else if (state === 'error')  el.innerHTML = `<span class="live-dot offline"></span>${t('live.disconnected')}`;
+        else                         el.innerHTML = t('stat.connecting');
+      }
+
+      function stopDashSSE() {
+        if (dashEventSource) { dashEventSource.close(); dashEventSource = null; }
+      }
+
+      function startDashSSE() {
+        stopDashSSE();
+        setDashLiveIndicator('connecting');
+        document.querySelectorAll('#dash-range-tabs .dash-range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === dashRange));
+        loadDashTimeseries();
+        const es = new EventSource(`/api?action=stats_dashboard_realtime&_t=${Date.now()}`);
+        dashEventSource = es;
+        es.onmessage = e => {
+          try {
+            const d = JSON.parse(e.data);
+            renderDashOverview(d.overview);
+            renderDashStreams(d.streams);
+            setDashLiveIndicator('live');
+            if (!dashGeoInitDone) { dashGeoInitDone = true; renderGeoSection('dash-geo-map', 'dash-geo-list', 'dash-geo-range', null); }
+          } catch (err) { console.warn('Dashboard SSE error', err); }
+        };
+        es.onerror = () => setDashLiveIndicator('error');
+      }
+
+      async function loadDashTimeseries() {
+        try { renderDashTimeseries((await dashGet('stats_timeseries', `&range=${dashRange}`)).data); } catch (e) { console.warn(e); }
+      }
+
+      const BROWSER_COLORS = { Chrome:'var(--blue)', Edge:'var(--mint)', Safari:'var(--gold)', Firefox:'var(--rose)', Opera:'#a78bfa', Other:'var(--muted)' };
+      const OS_COLORS      = { Windows:'var(--blue)', macOS:'var(--mint)', iOS:'var(--gold)', Android:'var(--rose)', Linux:'#a78bfa', Other:'var(--muted)' };
+
+      function renderHbarDynamic(listId, items, colorMap) {
+        const el = document.getElementById(listId);
+        if (!el) return;
+        if (!items || !items.length) { el.innerHTML = `<div style="color:var(--muted);font-size:.82rem;">${t('hbar.no_data')}</div>`; return; }
+        const total = items.reduce((s, r) => s + r.cnt, 0) || 1;
+        el.innerHTML = items.map(r => {
+          const pct  = Math.round(r.cnt / total * 100);
+          const color = colorMap[r.name] || 'var(--muted)';
+          return `<div class="dash-hbar-row">
+            <span class="dash-hbar-lbl" style="width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(r.name)}</span>
+            <div class="dash-hbar-track"><div class="dash-hbar-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="dash-hbar-pct">${pct}%</span>
+          </div>`;
+        }).join('');
+      }
+
+      function renderDashOverview(d) {
+        if (!d) return;
+        document.getElementById('dash-online').textContent = fmtN(d.total_online);
+        document.getElementById('dash-today').textContent  = fmtN(d.today_views);
+        document.getElementById('dash-total').textContent  = fmtN(d.total_views);
+        document.getElementById('dash-unique').textContent = fmtN(d.unique_visitors);
+        const dev = d.devices || {};
+        const desktop = dev['desktop'] || 0, mobile = dev['mobile'] || 0, tablet = dev['tablet'] || 0;
+        const tot = desktop + mobile + tablet || 1;
+        const pct = n => Math.round(n / tot * 100);
+        [['dh-desktop', desktop], ['dh-mobile', mobile], ['dh-tablet', tablet]].forEach(([id, n]) => {
+          const el = document.getElementById(id); if (el) el.style.width = pct(n) + '%';
+          const el2 = document.getElementById(id + '-pct'); if (el2) el2.textContent = pct(n) + '%';
+        });
+        renderHbarDynamic('dash-browser-list', d.browsers, BROWSER_COLORS);
+        renderHbarDynamic('dash-os-list',      d.oses,     OS_COLORS);
+      }
+
+      function renderDashTimeseries(d) {
+        if (!d) return;
+        const titleEl = document.getElementById('dash-chart-title');
+        if (titleEl) titleEl.textContent = t('chart.' + d.range) || t('section.timeseries');
+        renderBarChart(document.getElementById('dash-bar-chart'), document.getElementById('dash-bar-axis'), d.buckets, d.range, d.ref_start, d.bucket_secs);
+      }
+
+      let dashStreamsSortCol = 'last_seen_at';
+      let dashStreamsSortDir = 'desc';
+      let dashStreamsData = [];
+
+      function sortDashStreams(data) {
+        const col = dashStreamsSortCol;
+        const dir = dashStreamsSortDir === 'asc' ? 1 : -1;
+        return [...data].sort((a, b) => {
+          const av = a[col], bv = b[col];
+          if (typeof av === 'string') return dir * String(av || '').localeCompare(String(bv || ''));
+          return dir * ((av || 0) - (bv || 0));
+        });
+      }
+
+      function updateDashStreamHeaders() {
+        document.querySelectorAll('.dash-table thead th[data-sort-col]').forEach(th => {
+          const col = th.dataset.sortCol;
+          th.classList.toggle('sort-asc',  col === dashStreamsSortCol && dashStreamsSortDir === 'asc');
+          th.classList.toggle('sort-desc', col === dashStreamsSortCol && dashStreamsSortDir === 'desc');
+        });
+      }
+
+      function renderDashStreams(rows) {
+        dashStreamsData = rows || [];
+        const tbody = document.getElementById('dash-streams-tbody');
+        if (!tbody) return;
+        if (!dashStreamsData.length) {
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">${t('table.no_data')}</td></tr>`;
+          updateDashStreamHeaders();
+          return;
+        }
+        const sorted = sortDashStreams(dashStreamsData);
+        const maxTotal = Math.max(...sorted.map(r => r.total_views), 1);
+        const esc2 = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        tbody.innerHTML = sorted.map(r => {
+          const barPct = Math.round(r.total_views / maxTotal * 100);
+          const devTotal = r.mobile + r.tablet + r.desktop || 0;
+          let devHtml = devTotal > 0
+            ? (r.desktop > 0 ? `<span class="dash-dev-badge desktop">💻 ${Math.round(r.desktop/devTotal*100)}%</span>` : '')
+              + (r.mobile  > 0 ? `<span class="dash-dev-badge mobile">📱 ${Math.round(r.mobile/devTotal*100)}%</span>` : '')
+              + (r.tablet  > 0 ? `<span class="dash-dev-badge tablet">📋 ${Math.round(r.tablet/devTotal*100)}%</span>` : '')
+            : '<span class="dash-muted">—</span>';
+          const onlineCls = r.online > 0 ? ' dash-td-online' : '';
+          return `<tr>
+            <td class="dash-td-name dash-td-name-link" data-id="${r.stream_id}" data-name="${esc2(r.event_name)}" title="${esc2(r.event_name)}">${esc2(r.event_name) || `<span class="dash-muted">${t('table.deleted')}</span>`}</td>
+            <td class="dash-td-num${onlineCls}">${r.online > 0 ? '● ' + r.online : '—'}</td>
+            <td class="dash-td-num">${r.today_views}</td>
+            <td><div class="dash-td-bar"><span class="dash-td-bar-num">${r.total_views}</span><div class="dash-td-bar-track"><div class="dash-td-bar-fill" style="width:${barPct}%"></div></div></div></td>
+            <td class="dash-td-num">${r.unique_visitors}</td>
+            <td class="dash-td-num dash-muted">${fmtDur(r.avg_duration)}</td>
+            <td><div class="dash-dev-badges">${devHtml}</div></td>
+            <td class="dash-td-num dash-muted">${fmtRel(r.last_seen_at)}</td>
+          </tr>`;
+        }).join('');
+        updateDashStreamHeaders();
+      }
+
+      document.querySelector('.dash-table')?.addEventListener('click', e => {
+        const th = e.target.closest('th[data-sort-col]');
+        if (!th) return;
+        const col = th.dataset.sortCol;
+        if (col === dashStreamsSortCol) {
+          dashStreamsSortDir = dashStreamsSortDir === 'desc' ? 'asc' : 'desc';
+        } else {
+          dashStreamsSortCol = col;
+          dashStreamsSortDir = col === 'event_name' ? 'asc' : 'desc';
+        }
+        renderDashStreams(dashStreamsData);
+      });
+
+
+      // ── Stream stat modal ──────────────────────────────────────────
+      let currentStatId = null;
+      let statEventSource = null;
+      const statModal = document.getElementById('stream-stat-modal');
+      const _esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+      function setLiveIndicator(state) {
+        const el = document.getElementById('ss-live-indicator');
+        if (!el) return;
+        el.dataset.state = state;
+        if (state === 'live')        el.innerHTML = `<span class="live-dot"></span>${t('live.live')}`;
+        else if (state === 'error')  el.innerHTML = `<span class="live-dot offline"></span>${t('live.disconnected')}`;
+        else                         el.innerHTML = t('stat.connecting');
+      }
+
+      function stopStreamSSE() {
+        if (statEventSource) { statEventSource.close(); statEventSource = null; }
+      }
+
+      function startStreamSSE(id) {
+        stopStreamSSE();
+        setLiveIndicator('connecting');
+        const es = new EventSource(`/api?action=stats_stream_realtime&id=${encodeURIComponent(id)}`);
+        statEventSource = es;
+        es.onmessage = e => {
+          try {
+            const d = JSON.parse(e.data);
+            renderStreamSummary(d.summary);
+            if (ssPageStreamId) loadSessionsPage(ssPageStreamId, ssPageOffset);
+            setLiveIndicator('live');
+          } catch (err) { console.warn('SSE parse error', err); }
+        };
+        es.onerror = () => setLiveIndicator('error');
+      }
+
+      function renderStreamSummary(s) {
+        document.getElementById('ss-online').textContent = fmtN(s.online);
+        document.getElementById('ss-today').textContent  = fmtN(s.today_views);
+        document.getElementById('ss-total').textContent  = fmtN(s.total_views);
+        document.getElementById('ss-unique').textContent = fmtN(s.unique_visitors);
+        const devTot = s.mobile + s.tablet + s.desktop || 1;
+        const dp = n => Math.round(n / devTot * 100);
+        [['ss-dh-desktop', s.desktop], ['ss-dh-mobile', s.mobile], ['ss-dh-tablet', s.tablet]].forEach(([id2, n]) => {
+          const el = document.getElementById(id2); if (el) el.style.width = dp(n) + '%';
+          const el2 = document.getElementById(id2 + '-pct'); if (el2) el2.textContent = dp(n) + '%';
+        });
+        renderHbarDynamic('ss-browser-list', s.browsers, BROWSER_COLORS);
+        renderHbarDynamic('ss-os-list',      s.oses,     OS_COLORS);
+      }
+
+      const devIcon = t => t === 'mobile' ? '📱' : t === 'tablet' ? '📋' : '💻';
+      const bClass  = b => ({Chrome:'chrome', Edge:'edge', Safari:'safari', Firefox:'firefox', Opera:'opera'}[b] || 'other');
+      const fmtGeo  = geo => {
+        if (!geo) return '';
+        const parts = [geo.country, geo.city && geo.city !== geo.region ? geo.city : geo.region].filter(Boolean);
+        return parts.join(' · ');
+      };
+
+      function renderRecentSessions(sessions) {
+        const recentEl = document.getElementById('ss-recent-list');
+        if (!sessions || !sessions.length) {
+          recentEl.innerHTML = `<div style="color:var(--muted);text-align:center;padding:16px;">${t('stat.no_records')}</div>`;
+          return;
+        }
+        const nowSec = Math.floor(Date.now() / 1000);
+        recentEl.innerHTML = sessions.map(row => {
+          const trulyActive = row.is_active && (nowSec - row.last_seen_at < 75);
+          let dur, durLabel;
+          if (row.ended_at > 0) {
+            dur = fmtDur(row.ended_at - row.started_at);
+            durLabel = t('sess.dur') + ' ' + dur;
+          } else if (trulyActive) {
+            dur = t('sess.watching') + ' · ' + fmtDur(nowSec - row.started_at);
+            durLabel = dur;
+          } else {
+            const elapsed = row.last_seen_at - row.started_at;
+            dur = elapsed > 0 ? fmtDur(elapsed) : t('sess.lt1min');
+            durLabel = t('sess.dur') + ' ' + dur;
+          }
+          const dt = new Date(row.started_at * 1000);
+          const ts2 = dt.toLocaleString(LANG === 'zh' ? 'zh-CN' : 'en-US', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+          const browser = row.browser || 'Other';
+          const ip = row.ip_address || '';
+          const geo = fmtGeo(row.geo);
+          return `<div class="recent-session-row">
+            <div class="rsr-top">
+              <span style="font-size:.88rem;">${devIcon(row.device_type)}</span>
+              <span class="browser-badge ${bClass(browser)}">${_esc(browser)}</span>
+              <span class="rsr-ip" title="${_esc(ip)}">${_esc(ip) || '<span style="color:var(--muted)">—</span>'}</span>
+              ${trulyActive ? `<span class="badge badge-tg" style="font-size:.63rem;padding:1px 5px;flex-shrink:0;">${t('sess.online')}</span>` : ''}
+              <span class="rsr-time">${ts2}</span>
+            </div>
+            <div class="rsr-bot">
+              <span class="rsr-geo">${geo ? '🌐 ' + _esc(geo) : ''}</span>
+              <span class="rsr-dur">${durLabel}</span>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      let ssPageStreamId = null;
+      let ssPageOffset   = 0;
+      let ssPageLimit    = parseInt(localStorage.getItem('ss_page_limit') || '20', 10);
+      let ssPageOrderBy  = 'last_seen_at';
+      let ssPageOrderDir = 'desc';
+
+      const SORT_COL_KEY = { last_seen_at: 'sort.last_seen', started_at: 'sort.started_at', duration: 'sort.duration', device_type: 'sort.device', browser: 'sort.browser', ip_address: 'sort.ip' };
+
+      function updateSortTabs() {
+        document.querySelectorAll('#ss-sort-tabs .dash-range-btn').forEach(btn => {
+          const col = btn.dataset.sortCol;
+          const active = col === ssPageOrderBy;
+          btn.classList.toggle('active', active);
+          const label = t(SORT_COL_KEY[col] || col);
+          btn.textContent = active ? label + ' ' + (ssPageOrderDir === 'asc' ? '↑' : '↓') : label;
+        });
+      }
+
+      async function loadSessionsPage(streamId, offset) {
+        ssPageStreamId = streamId;
+        ssPageOffset   = offset;
+        try {
+          const res  = await fetch(`/api?action=stats_sessions_page&id=${streamId}&offset=${offset}&limit=${ssPageLimit}&order_by=${ssPageOrderBy}&order_dir=${ssPageOrderDir}&_t=${Date.now()}`);
+          const json = await res.json();
+          const { sessions, total } = json.data;
+          renderRecentSessions(sessions);
+          const totalPages = Math.max(1, Math.ceil(total / ssPageLimit));
+          const curPage    = Math.floor(offset / ssPageLimit) + 1;
+          document.getElementById('ss-page-info').textContent   = totalPages > 1 ? t('page.page_of').replace('{cur}', curPage).replace('{total}', totalPages) : '';
+          document.getElementById('ss-total-count').textContent = t('page.total').replace('{n}', total);
+          document.getElementById('ss-prev-page').disabled      = offset <= 0;
+          document.getElementById('ss-next-page').disabled      = offset + ssPageLimit >= total;
+          document.getElementById('ss-sessions-pagination').style.display = total > 0 ? 'flex' : 'none';
+        } catch (e) { console.warn('loadSessionsPage error', e); }
+      }
+
+      let dashGeoInitDone = false;
+
+      async function renderGeoSection(canvasId, listId, rangeTabsId, streamId) {
+        const echartsOk = await window.__echartsReady;
+        const rangeEl   = document.getElementById(rangeTabsId);
+        const listEl    = document.getElementById(listId);
+        const canvas    = document.getElementById(canvasId);
+        let   geoChart  = null;
+
+        const fetchAndRender = async (range) => {
+          const url = `/api?action=stats_geo${streamId ? '&id=' + streamId : ''}&range=${range}&_t=${Date.now()}`;
+          let countries = [];
+          try {
+            const res  = await fetch(url);
+            const data = await res.json();
+            countries  = data?.data?.countries || [];
+          } catch (e) {}
+          renderGeoList(listEl, countries);
+          if (echartsOk && canvas) await renderGeoMap(canvas, countries, geoChart, c => { geoChart = c; });
+        };
+
+        const storageKey   = 'geo_range_' + rangeTabsId;
+        const initialRange = localStorage.getItem(storageKey) || '30d';
+
+        if (rangeEl) {
+          const fresh = rangeEl.cloneNode(true);
+          rangeEl.parentNode.replaceChild(fresh, rangeEl);
+          fresh.querySelectorAll('.dash-range-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.range === initialRange));
+          fresh.querySelectorAll('.dash-range-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              fresh.querySelectorAll('.dash-range-btn').forEach(b => b.classList.remove('active'));
+              btn.classList.add('active');
+              localStorage.setItem(storageKey, btn.dataset.range);
+              fetchAndRender(btn.dataset.range);
+            });
+          });
+        }
+
+        fetchAndRender(initialRange);
+      }
+
+      async function renderGeoMap(canvas, countries, existingChart, setChart) {
+        if (!window.__worldGeoJson) {
+          try {
+            const r = await fetch('https://cdn.jsdelivr.net/npm/echarts/map/json/world.json');
+            window.__worldGeoJson = await r.json();
+          } catch (e) {
+            try {
+              const r = await fetch('/world.json');
+              window.__worldGeoJson = await r.json();
+            } catch (e2) { return; }
+          }
+          echarts.registerMap('world', window.__worldGeoJson);
+        }
+        const chart = existingChart || echarts.getInstanceByDom(canvas) || echarts.init(canvas, null, { renderer: 'canvas' });
+        setChart(chart);
+        const max   = countries[0]?.count || 1;
+        const datas = countries.map(c => ({ name: c.name, value: c.count }));
+        chart.setOption({
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'item', formatter: p => p.data ? `${p.name}: ${p.data.value}` : p.name },
+          visualMap: { min: 0, max, show: false, inRange: { color: ['rgba(78,126,232,0.08)', 'rgba(78,126,232,0.85)'] } },
+          series: [{ type: 'map', map: 'world', roam: true,
+            itemStyle: { borderColor: 'rgba(0,0,0,0.1)', borderWidth: 0.5 },
+            emphasis: { label: { show: false }, itemStyle: { areaColor: 'var(--mint)' } },
+            data: datas }]
+        }, true);
+        new MutationObserver(() => chart.resize()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      }
+
+      function renderGeoList(listEl, countries) {
+        if (!listEl) return;
+        if (!countries.length) { listEl.innerHTML = `<p style="color:var(--muted);font-size:.82rem;margin:8px 0">${t('geo.no_data')}</p>`; return; }
+        const max = countries[0].count;
+        listEl.innerHTML = countries.slice(0, 15).map(c => `
+          <div class="geo-country-row">
+            <span>${_esc(c.name)}</span>
+            <span style="font-weight:800">${c.count}</span>
+            <div class="geo-bar-track"><div class="geo-bar-fill" style="width:${Math.round(100 * c.count / max)}%"></div></div>
+          </div>`).join('');
+      }
+
+      function openStreamStatModal(id, name) {
+        currentStatId = id;
+        const titleEl = document.getElementById('stream-stat-modal-title');
+        if (titleEl) titleEl.textContent = name || t('stat.title');
+        ['ss-online','ss-today','ss-total','ss-unique'].forEach(k => { const el = document.getElementById(k); if (el) el.textContent = '—'; });
+        document.getElementById('ss-recent-list').innerHTML = `<div style="color:var(--muted);text-align:center;padding:16px;">${t('stat.loading')}</div>`;
+        const savedModalRange = localStorage.getItem('ss_ts_range') || '7d';
+        document.querySelectorAll('#ss-range-tabs .dash-range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === savedModalRange));
+        statModal.classList.remove('hidden');
+        loadStreamTimeseries(id, savedModalRange);
+        startStreamSSE(id);
+        ssPageOffset = 0;
+        updateSortTabs();
+        loadSessionsPage(id, 0);
+        renderGeoSection('ss-geo-map', 'ss-geo-list', 'ss-geo-range', id);
+      }
+
+      async function loadStreamTimeseries(id, range) {
+        try {
+          const r = await dashGet('stats_stream_detail', `&id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`);
+          const ts = r.data.timeseries;
+          renderBarChart(document.getElementById('ss-bar-chart'), document.getElementById('ss-bar-axis'), ts.buckets, ts.range, ts.ref_start, ts.bucket_secs);
+        } catch (e) { console.warn('loadStreamTimeseries error:', e); }
+      }
+
+      // ── DOMContentLoaded wiring ────────────────────────────────────
+      document.addEventListener('DOMContentLoaded', () => {
+        // updateSortTabs is in scope here; register it as a lang-change hook
+        _langChangeHooks.push(() => updateSortTabs());
+
+        // Dashboard menu button triggers
+        document.querySelectorAll('.admin-menu-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (btn.dataset.adminViewTarget === 'dashboard') startDashSSE();
+            else stopDashSSE();
+          });
+        });
+        document.querySelectorAll('.admin-sub-btn').forEach(btn => {
+          btn.addEventListener('click', () => stopDashSSE());
+        });
+
+        // Check initial view
+        const initView = (location.hash || '').replace(/^#/, '') || localStorage.getItem('admin_active_view') || 'dashboard';
+        if (initView === 'dashboard') startDashSSE();
+
+        // Re-start SSE after login (enterPanel dispatches this event)
+        document.addEventListener('admin:enter-dashboard', () => startDashSSE());
+
+        // Dashboard range tabs
+        document.getElementById('dash-range-tabs')?.addEventListener('click', async e => {
+          const btn = e.target.closest('.dash-range-btn');
+          if (!btn) return;
+          document.querySelectorAll('#dash-range-tabs .dash-range-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          dashRange = btn.dataset.range;
+          localStorage.setItem('dash_ts_range', dashRange);
+          loadDashTimeseries();
+        });
+
+        // Dashboard export CSV
+        document.getElementById('dash-export-btn')?.addEventListener('click', async () => {
+          const btn = document.getElementById('dash-export-btn');
+          btn.disabled = true; btn.textContent = t('dash.exporting');
+          try {
+            const res = await fetch(`/api?action=stats_export_csv&_t=${Date.now()}`);
+            if (!res.ok) throw new Error('Export failed');
+            const blob = await res.blob(), url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url;
+            a.download = `viewer_stats_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click(); URL.revokeObjectURL(url);
+          } catch (e) { alert(e.message); }
+          finally { btn.disabled = false; btn.textContent = t('dash.export'); }
+        });
+
+        // Modal range tabs
+        document.getElementById('ss-range-tabs')?.addEventListener('click', e => {
+          const btn = e.target.closest('.dash-range-btn');
+          if (!btn || !currentStatId) return;
+          document.querySelectorAll('#ss-range-tabs .dash-range-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          localStorage.setItem('ss_ts_range', btn.dataset.range);
+          loadStreamTimeseries(currentStatId, btn.dataset.range);
+        });
+
+        // Close modal
+        const closeStatModal = () => { statModal.classList.add('hidden'); stopStreamSSE(); setLiveIndicator('connecting'); };
+        document.getElementById('stream-stat-modal-close')?.addEventListener('click', closeStatModal);
+        statModal?.addEventListener('click', e => { if (e.target === statModal) closeStatModal(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && !statModal.classList.contains('hidden')) closeStatModal(); });
+
+        // Dashboard table stream name click
+        document.getElementById('dash-streams-tbody')?.addEventListener('click', e => {
+          const td = e.target.closest('.dash-td-name-link');
+          if (!td) return;
+          openStreamStatModal(td.dataset.id, td.dataset.name || '');
+        });
+
+        // stream-stat-btn delegation
+        document.getElementById('admin-stream-list')?.addEventListener('click', e => {
+          if (!e.target.classList.contains('stream-stat-btn')) return;
+          const id = e.target.dataset.id, name = e.target.dataset.name || '';
+          if (!id) return;
+          e.target.closest('.action-menu')?.removeAttribute('open');
+          openStreamStatModal(id, name);
+        });
+
+        // Session sort tabs
+        document.getElementById('ss-sort-tabs')?.addEventListener('click', e => {
+          const btn = e.target.closest('.dash-range-btn');
+          if (!btn || !btn.dataset.sortCol) return;
+          const col = btn.dataset.sortCol;
+          if (col === ssPageOrderBy) {
+            ssPageOrderDir = ssPageOrderDir === 'desc' ? 'asc' : 'desc';
+          } else {
+            ssPageOrderBy  = col;
+            ssPageOrderDir = 'desc';
+          }
+          updateSortTabs();
+          if (ssPageStreamId) loadSessionsPage(ssPageStreamId, 0);
+        });
+
+        // Session pagination
+        document.getElementById('ss-prev-page')?.addEventListener('click', () =>
+          loadSessionsPage(ssPageStreamId, Math.max(0, ssPageOffset - ssPageLimit)));
+        document.getElementById('ss-next-page')?.addEventListener('click', () =>
+          loadSessionsPage(ssPageStreamId, ssPageOffset + ssPageLimit));
+        const pageSizeEl = document.getElementById('ss-page-size');
+        if (pageSizeEl) {
+          pageSizeEl.value = String(ssPageLimit);
+          if (!pageSizeEl.value) { pageSizeEl.value = '20'; ssPageLimit = 20; }
+          pageSizeEl.addEventListener('change', () => {
+            ssPageLimit = parseInt(pageSizeEl.value, 10);
+            localStorage.setItem('ss_page_limit', ssPageLimit);
+            if (ssPageStreamId) loadSessionsPage(ssPageStreamId, 0);
+          });
+        }
+      });
+    })();
+  </script>
+</body>
+
+</html>

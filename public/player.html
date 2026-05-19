@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>播放器</title>
+  <script src="/vendor/hls.min.js"></script>
+  <script src="/vendor/flv.min.js"></script>
+  <script src="/vendor/dash.all.min.js"></script>
+  <script src="/vendor/artplayer.js"></script>
+  <script src="/vendor/artplayer-plugin-hls-control.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      height: 100vh;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      color: #fff;
+      font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    }
+
+    .artplayer-app {
+      width: 100%;
+      height: 100%;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .loader {
+      width: 50px;
+      height: 50px;
+      margin: 0 auto;
+      border: 4px solid #6b7280;
+      border-top-color: #4f46e5;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .loading-container {
+      width: min(100% - 36px, 460px);
+      padding: 24px;
+      text-align: center;
+    }
+
+    .loading-container.waiting-live {
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.36);
+    }
+
+    .loading-container.waiting-live .loader {
+      display: none;
+    }
+
+    #msg {
+      margin: 16px 0 0;
+      font-weight: 800;
+    }
+
+    .loading-container.waiting-live #msg {
+      margin-top: 0;
+      font-size: 1.08rem;
+    }
+
+    .sub-msg {
+      margin: 8px 0 0;
+      color: #aeb8c8;
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    .password-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.9);
+      padding: 20px;
+    }
+
+    .password-card {
+      width: min(100%, 380px);
+      border-radius: 8px;
+      padding: 28px;
+      background: #1f2937;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    .password-card h2 {
+      margin: 0 0 16px;
+      font-size: 1.25rem;
+    }
+
+    .password-card input,
+    .password-card button {
+      width: 100%;
+      border: 0;
+      border-radius: 6px;
+      padding: 12px;
+      font: inherit;
+    }
+
+    .password-card input {
+      margin-bottom: 14px;
+      color: #fff;
+      background: #374151;
+      outline: 1px solid #4b5563;
+    }
+
+    .password-card button {
+      color: #fff;
+      background: #4f46e5;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .error {
+      margin: 12px 0 0;
+      color: #ef4444;
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="loading-container" class="loading-container">
+    <div class="loader"></div>
+    <p id="msg"></p>
+    <p id="sub-msg" class="sub-msg"></p>
+  </div>
+
+  <div id="player-container" class="artplayer-app hidden"></div>
+
+  <div id="password-modal" class="password-modal hidden">
+    <div class="password-card">
+      <h2 id="pwd-title"></h2>
+      <form id="password-form">
+        <input type="password" id="pwd-in" required>
+        <button type="submit" id="pwd-submit"></button>
+        <p id="pwd-err" class="error hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Minimal i18n: read language preference set by the main site (index.html / admin.html).
+    const PLAYER_I18N = {
+      zh: {
+        loading:          '正在加载...',
+        pwd_title:        '需要密码',
+        pwd_placeholder:  '请输入密码',
+        pwd_submit:       '确 定',
+        pwd_error:        '密码错误',
+        invalid_id:       '无效的直播 ID',
+        check_failed:     '检测失败',
+        no_stream:        '没有监测到推流信息',
+        no_sources:       '暂无播放源',
+        checking:         '正在检测推流信息...',
+        checking_sub:     '检测到推流后会自动进入播放器。',
+        waiting_sub:      '正在自动检测，推流开始后会自动进入播放器。',
+        resuming_sub:     '正在自动检测，推流恢复后会自动进入播放器。',
+        flv_unsupported:  '当前浏览器不支持 FLV 播放',
+        hls_unsupported:  '当前浏览器不支持 HLS 播放',
+        dash_unavailable: 'DASH 播放组件未加载',
+        quality:          '画质',
+        // API error codes from server
+        'err.stream_not_found':            '直播不存在',
+        'err.stream_disabled':             '直播已关闭',
+        'err.stream_not_found_or_disabled':'直播不存在或已关闭',
+        'err.auth_incorrect_password':     '密码错误',
+        'err.missing_session_id':          '缺少会话 ID',
+        'err.viewer_session_not_found':    '观看会话不存在',
+        'err.auth_required':               '未登录或会话已过期',
+        'err.server_error':                '服务器内部错误',
+      },
+      en: {
+        loading:          'Loading...',
+        pwd_title:        'Password required',
+        pwd_placeholder:  'Enter password',
+        pwd_submit:       'OK',
+        pwd_error:        'Incorrect password',
+        invalid_id:       'Invalid stream ID',
+        check_failed:     'Check failed',
+        no_stream:        'No stream detected',
+        no_sources:       'No playback sources',
+        checking:         'Checking for stream...',
+        checking_sub:     'The player will start automatically once a stream is detected.',
+        waiting_sub:      'Auto-checking. The player will start when the stream begins.',
+        resuming_sub:     'Auto-checking. The player will resume when the stream recovers.',
+        flv_unsupported:  'FLV playback is not supported in this browser',
+        hls_unsupported:  'HLS playback is not supported in this browser',
+        dash_unavailable: 'DASH player component not loaded',
+        quality:          'Quality',
+        // API error codes from server
+        'err.stream_not_found':            'Stream not found',
+        'err.stream_disabled':             'Stream is disabled',
+        'err.stream_not_found_or_disabled':'Stream not found or disabled',
+        'err.auth_incorrect_password':     'Incorrect password',
+        'err.missing_session_id':          'Missing session ID',
+        'err.viewer_session_not_found':    'Viewer session not found',
+        'err.auth_required':               'Not authenticated or session expired',
+        'err.server_error':                'Internal server error',
+      },
+    };
+    const PLAYER_LANG = (localStorage.getItem('lang_pref') || 'zh') === 'en' ? 'en' : 'zh';
+    const t = key => (PLAYER_I18N[PLAYER_LANG] || PLAYER_I18N.zh)[key] || key;
+
+    // Initialise static text in the HTML that cannot use data-i18n.
+    document.getElementById('msg').textContent = t('loading');
+    document.getElementById('pwd-title').textContent = t('pwd_title');
+    document.getElementById('pwd-in').placeholder = t('pwd_placeholder');
+    document.getElementById('pwd-submit').textContent = t('pwd_submit');
+    document.getElementById('pwd-err').textContent = t('pwd_error');
+
+    // Set initial page title from cached site settings (same cache key as index.html).
+    try {
+      const cached = JSON.parse(localStorage.getItem('site_settings_cache') || 'null');
+      if (cached && cached.site_title) document.title = cached.site_title;
+    } catch (e) { /* ignore */ }
+
+    function hexToArrayBuffer(hex) {
+      hex = hex.trim();
+      if (hex.length !== 32) throw new Error("AES key must be 16 bytes (32 hex chars)");
+      const arr = new Uint8Array(16);
+      for (let i = 0; i < 16; i++) {
+        arr[i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+      return arr.buffer;
+    }
+
+    function normalizeHexKey(hex) {
+      return String(hex || '').trim().replace(/^0x/i, '').replace(/\s+/g, '');
+    }
+
+    function decodeProxyTarget(url) {
+      try {
+        const parsed = new URL(url, window.location.href);
+        const parts = parsed.pathname.split('/');
+        if (parts.length < 5 || parts[1] !== 'proxy' || parts[2] !== 'hls') return url;
+        const encoded = parts[4].replace(/-/g, '+').replace(/_/g, '/');
+        const padded = encoded + '='.repeat((4 - encoded.length % 4) % 4);
+        return decodeURIComponent(escape(atob(padded)));
+      } catch (e) {
+        return url;
+      }
+    }
+
+    function parseHlsKeyOverride(input) {
+      const text = String(input || '').trim();
+      if (!text) return null;
+      const direct = normalizeHexKey(text);
+      if (/^[0-9a-fA-F]{32}$/.test(direct)) return { defaultKey: direct, rules: [] };
+      const rules = [];
+      text.split(/\n+/).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const parts = trimmed.split(/[:=]/);
+        if (parts.length < 2) return;
+        const pattern = parts.shift().trim();
+        const key = normalizeHexKey(parts.join(':'));
+        if (pattern && /^[0-9a-fA-F]{32}$/.test(key)) rules.push({ pattern, key });
+      });
+      return rules.length ? { defaultKey: '', rules } : null;
+    }
+
+    function selectHlsKeyOverride(config, requestUrl) {
+      if (!config) return '';
+      const targetUrl = decodeProxyTarget(requestUrl || '');
+      const rule = config.rules.find(item => targetUrl.includes(item.pattern) || String(requestUrl || '').includes(item.pattern));
+      return rule ? rule.key : config.defaultKey;
+    }
+
+    function hexToBase64Url(hex) {
+      const clean = hex.trim().replace(/^0x/i, '');
+      if (!/^[0-9a-fA-F]+$/.test(clean) || clean.length % 2 !== 0) return hex.trim();
+      let binary = '';
+      for (let i = 0; i < clean.length; i += 2) {
+        binary += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16));
+      }
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    }
+
+    function normalizeClearKeyValue(value) {
+      const text = String(value || '').trim();
+      return /^[0-9a-fA-F]{32}$/.test(text.replace(/^0x/i, '')) ? hexToBase64Url(text) : text;
+    }
+
+    function buildClearKeyProtectionData(input) {
+      if (!input) return null;
+      let parsed;
+      try {
+        parsed = JSON.parse(input);
+      } catch (e) {
+        parsed = input.split(/[\n,]+/).reduce((acc, item) => {
+          const parts = item.split(/[:=]/);
+          if (parts.length >= 2) acc[parts[0].trim()] = parts.slice(1).join(':').trim();
+          return acc;
+        }, {});
+      }
+      const source = parsed.clearkeys || (parsed.kid && parsed.key ? { [parsed.kid]: parsed.key } : parsed);
+      const clearkeys = Object.entries(source).reduce((acc, [kid, key]) => {
+        if (kid && key) acc[normalizeClearKeyValue(kid)] = normalizeClearKeyValue(key);
+        return acc;
+      }, {});
+      return Object.keys(clearkeys).length ? { 'org.w3.clearkey': { clearkeys } } : null;
+    }
+
+    function getLinkType(link) {
+      if (link.type) return link.type;
+      const path = (link.url || '').split('?')[0].toLowerCase();
+      if (path.endsWith('.mpd')) return 'dash';
+      if (path.endsWith('.m3u8')) return 'm3u8';
+      if (path.endsWith('.flv')) return 'flv';
+      return '';
+    }
+
+    function getPlaybackUrl(link) {
+      return link.playback_url || link.url;
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const streamId = urlParams.get('id');
+      const els = {
+        loading: document.getElementById('loading-container'),
+        player: document.getElementById('player-container'),
+        pwdModal: document.getElementById('password-modal'),
+        msg: document.getElementById('msg'),
+        subMsg: document.getElementById('sub-msg')
+      };
+      const livePollMs = 5000;
+      const playbackMonitorMs = 10000;
+      let livePollTimer = null;
+      let playbackMonitorTimer = null;
+      let viewerHeartbeatTimer = null;
+      let viewerSessionId = '';
+      let viewerVisitorId = localStorage.getItem('streamhall_visitor_id') || '';
+      let playerInstance = null;
+      let playbackMisses = 0;
+      if (!viewerVisitorId) {
+        viewerVisitorId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem('streamhall_visitor_id', viewerVisitorId);
+      }
+
+      const applyPlayerTitle = (data = {}) => {
+        if (!data.eventName) return;
+        document.title = data.siteTitle ? `${data.eventName} - ${data.siteTitle}` : data.eventName;
+      };
+
+      const applySiteIcon = (url = '') => {
+        const iconUrl = String(url || '').trim();
+        let link = document.querySelector('link[rel="icon"]');
+        if (!iconUrl) {
+          if (link) link.remove();
+          return;
+        }
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.href = iconUrl;
+      };
+
+      const setLoadingState = (message, detail = '', waiting = false) => {
+        els.player.classList.add('hidden');
+        els.loading.classList.remove('hidden');
+        els.loading.classList.toggle('waiting-live', waiting);
+        els.msg.textContent = message;
+        els.subMsg.textContent = detail;
+      };
+
+      const clearLivePoll = () => {
+        if (livePollTimer) window.clearInterval(livePollTimer);
+        livePollTimer = null;
+      };
+
+      const clearPlaybackMonitor = () => {
+        if (playbackMonitorTimer) window.clearInterval(playbackMonitorTimer);
+        playbackMonitorTimer = null;
+        playbackMisses = 0;
+      };
+
+      const destroyPlayer = () => {
+        clearPlaybackMonitor();
+        if (!playerInstance) return;
+        try {
+          playerInstance.destroy(false);
+        } catch (e) {
+          console.warn('Player destroy failed:', e);
+        }
+        playerInstance = null;
+        els.player.innerHTML = '';
+      };
+
+      const viewerState = () => document.hidden ? 'hidden' : 'viewing';
+
+      const postViewerEvent = async (action, payload = {}) => {
+        const res = await fetch(`/api?action=${action}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.status !== 'success') throw new Error(t('err.' + (json.code || '')) || json.code || action);
+        return json.data || {};
+      };
+
+      const startViewerStats = async () => {
+        if (viewerSessionId) return;
+        try {
+          const data = await postViewerEvent('viewer_start', {
+            id: streamId,
+            visitorId: viewerVisitorId,
+            referer: document.referrer || '',
+            state: viewerState()
+          });
+          viewerSessionId = data.sessionId || '';
+          if (!viewerSessionId) return;
+          viewerHeartbeatTimer = window.setInterval(() => {
+            postViewerEvent('viewer_heartbeat', {
+              sessionId: viewerSessionId,
+              state: viewerState()
+            }).catch(() => {});
+          }, 15000);
+        } catch (e) {
+          console.warn('Viewer stats start failed:', e);
+        }
+      };
+
+      const endViewerStats = () => {
+        if (viewerHeartbeatTimer) window.clearInterval(viewerHeartbeatTimer);
+        viewerHeartbeatTimer = null;
+        if (!viewerSessionId) return;
+        const payload = JSON.stringify({ sessionId: viewerSessionId, state: 'ended' });
+        try {
+          navigator.sendBeacon('/api?action=viewer_end', new Blob([payload], { type: 'application/json' }));
+        } catch (e) {
+          fetch('/api?action=viewer_end', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+          }).catch(() => {});
+        }
+        viewerSessionId = '';
+      };
+
+      window.addEventListener('pagehide', endViewerStats);
+
+      if (!streamId) {
+        setLoadingState(t('invalid_id'), '', true);
+        document.title = t('invalid_id');
+        return;
+      }
+
+      const fetchData = async (pwd = null) => {
+        const url = `/api?action=${pwd ? 'verify_password' : 'get_player_data'}${pwd ? '' : '&id=' + encodeURIComponent(streamId)}`;
+        const opts = pwd ? {
+          method: 'POST',
+          body: JSON.stringify({ id: streamId, password: pwd }),
+          headers: { 'Content-Type': 'application/json' }
+        } : {};
+        const res = await fetch(url, opts);
+        const json = await res.json();
+        if (json.status !== 'success') throw new Error(t('err.' + (json.code || '')) || json.code || '');
+        return json.data;
+      };
+
+      const checkPlayerStream = async (password = '') => {
+        const res = await fetch('/api?action=check_player_stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: streamId, password })
+        });
+        const json = await res.json();
+        if (json.status !== 'success') throw new Error(t('err.' + (json.code || '')) || json.code || t('check_failed'));
+        return json.data || { valid: false };
+      };
+
+      const waitForLiveAndStart = (data, password = '') => {
+        clearLivePoll();
+        destroyPlayer();
+        if (!data.links || data.links.length === 0) {
+          setLoadingState(t('no_sources'), '', true);
+          return;
+        }
+
+        let started = false;
+        const probeAndStart = async (showChecking = false) => {
+          if (started) return;
+          if (showChecking) {
+            setLoadingState(t('checking'), t('checking_sub'));
+          }
+          try {
+            const result = await checkPlayerStream(password);
+            if (result.valid) {
+              started = true;
+              clearLivePoll();
+              initPlayer(data, result.url || '', password);
+              return;
+            }
+            setLoadingState(t('no_stream'), t('waiting_sub'), true);
+          } catch (e) {
+            setLoadingState(e.message || t('no_stream'), t('waiting_sub'), true);
+          }
+        };
+
+        probeAndStart(true);
+        livePollTimer = window.setInterval(() => probeAndStart(false), livePollMs);
+      };
+
+      try {
+        const data = await fetchData();
+        applyPlayerTitle(data);
+        applySiteIcon(data.siteIconUrl || '');
+        if (data.requires_password) {
+          els.loading.classList.add('hidden');
+          els.pwdModal.classList.remove('hidden');
+          document.getElementById('pwd-in').focus();
+        } else {
+          startViewerStats();
+          waitForLiveAndStart(data);
+        }
+      } catch (e) {
+        setLoadingState(e.message, '', true);
+      }
+
+      document.getElementById('password-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pwd = document.getElementById('pwd-in').value;
+        try {
+          const data = await fetchData(pwd);
+          applyPlayerTitle(data);
+          applySiteIcon(data.siteIconUrl || '');
+          els.pwdModal.classList.add('hidden');
+          startViewerStats();
+          waitForLiveAndStart(data, pwd);
+        } catch (err) {
+          const errEl = document.getElementById('pwd-err');
+          errEl.textContent = err.message;
+          errEl.classList.remove('hidden');
+        }
+      });
+
+      function startPlaybackMonitor(data, password = '') {
+        clearPlaybackMonitor();
+        playbackMonitorTimer = window.setInterval(async () => {
+          try {
+            const result = await checkPlayerStream(password);
+            playbackMisses = result.valid ? 0 : playbackMisses + 1;
+          } catch (e) {
+            playbackMisses += 1;
+          }
+          if (playbackMisses >= 2) {
+            setLoadingState(t('no_stream'), t('resuming_sub'), true);
+            waitForLiveAndStart(data, password);
+          }
+        }, playbackMonitorMs);
+      }
+
+      function initPlayer(data, preferredUrl = '', password = '') {
+        clearLivePoll();
+        destroyPlayer();
+        els.loading.classList.add('hidden');
+        els.loading.classList.remove('waiting-live');
+        els.player.classList.remove('hidden');
+        const links = data.links || [];
+        if (links.length === 0) {
+          els.player.classList.add('hidden');
+          els.loading.classList.remove('hidden');
+          els.msg.textContent = t('no_sources');
+          return;
+        }
+
+        const activeLinks = [...links];
+        const preferredIndex = activeLinks.findIndex(link => link.url === preferredUrl || getPlaybackUrl(link) === preferredUrl);
+        if (preferredIndex > 0) {
+          activeLinks.unshift(activeLinks.splice(preferredIndex, 1)[0]);
+        }
+
+        const quality = activeLinks.map((l, i) => ({
+          default: i === 0,
+          html: l.name,
+          url: getPlaybackUrl(l),
+          type: getLinkType(l)
+        }));
+
+        playerInstance = new Artplayer({
+          container: '.artplayer-app',
+          url: quality[0].url,
+          type: quality[0].type,
+          quality: quality,
+          title: data.eventName,
+          autoplay: true,
+          volume: 0.5,
+          autoSize: true,
+          fullscreen: true,
+          fullscreenWeb: true,
+          setting: true,
+          pip: true,
+          customType: {
+            flv: function (video, url, art) {
+              if (flvjs.isSupported()) {
+                const flv = flvjs.createPlayer({ type: 'flv', url: url });
+                flv.attachMediaElement(video);
+                flv.load();
+                art.flv = flv;
+                art.on('destroy', () => flv.destroy());
+              } else {
+                art.notice.show = t('flv_unsupported');
+              }
+            },
+            m3u8: function (video, url, art) {
+              if (Hls.isSupported()) {
+                if (art.hls) art.hls.destroy();
+                const currentLink = activeLinks.find(l => l.url === url || getPlaybackUrl(l) === url);
+                const keyOverride = currentLink ? parseHlsKeyOverride(currentLink.key) : null;
+
+                class CustomLoader extends Hls.DefaultConfig.loader {
+                  loadInternal() {
+                    const { context } = this;
+                    const overrideKey = keyOverride && context && context.keyInfo ? selectHlsKeyOverride(keyOverride, context.url) : '';
+                    if (overrideKey) {
+                      try {
+                        const keyData = hexToArrayBuffer(overrideKey);
+                        this.loader = {
+                          readyState: 4,
+                          status: 200,
+                          statusText: 'OK',
+                          responseType: 'arraybuffer',
+                          response: keyData,
+                          responseText: keyData,
+                          responseURL: context.url
+                        };
+                        this.readystatechange();
+                        return;
+                      } catch (e) {
+                        console.error('Key Override Error:', e);
+                      }
+                    }
+                    super.loadInternal();
+                  }
+                }
+
+                const hls = new Hls({
+                  enableSoftwareAES: !!keyOverride,
+                  loader: keyOverride ? CustomLoader : Hls.DefaultConfig.loader,
+                  debug: false
+                });
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                art.hls = hls;
+                art.on('destroy', () => hls.destroy());
+              } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+              } else {
+                art.notice.show = t('hls_unsupported');
+              }
+            },
+            dash: function (video, url, art) {
+              if (!window.dashjs) {
+                art.notice.show = t('dash_unavailable');
+                return;
+              }
+              if (art.dash) art.dash.destroy();
+              const currentLink = activeLinks.find(l => l.url === url || getPlaybackUrl(l) === url);
+              const dash = dashjs.MediaPlayer().create();
+              const protectionData = currentLink ? buildClearKeyProtectionData(currentLink.clearkey) : null;
+              if (protectionData) dash.setProtectionData(protectionData);
+              dash.initialize(video, url, art.option.autoplay);
+              art.dash = dash;
+              art.on('destroy', () => dash.destroy());
+            }
+          },
+          plugins: [
+            artplayerPluginHlsControl({
+              quality: { control: true, setting: true, getName: (l) => l.height + 'P', title: t('quality') }
+            })
+          ]
+        });
+        startPlaybackMonitor(data, password);
+      }
+    });
+  </script>
+</body>
+
+</html>
