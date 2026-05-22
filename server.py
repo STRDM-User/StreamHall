@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import socket
 import csv
 import hashlib
 import hmac
@@ -2819,6 +2820,7 @@ class StreamHallHandler(BaseHTTPRequestHandler):
                 "dir_index": dir_index,
                 "push_rel_path": rel_path,
                 "is_folder": is_folder,
+                "user_stopped": False,
             }
         try:
             with db() as conn:
@@ -2829,22 +2831,24 @@ class StreamHallHandler(BaseHTTPRequestHandler):
                 )
         except Exception:
             pass
-        def _monitor(jid: str, stream_key: str = stream_key, created: bool = push_created_route, pfile: str | None = playlist_path) -> None:
-            proc.wait()
+        def _monitor(jid: str, stream_key: str = stream_key, created: bool = push_created_route, pfile: str | None = playlist_path, lp: bool = loop) -> None:
+            rc = proc.wait()
             with _pushes_lock:
-                active_pushes.pop(jid, None)
+                job_meta = active_pushes.pop(jid, {})
+            user_stopped = job_meta.get("user_stopped", False)
             if pfile:
                 try:
                     os.unlink(pfile)
                 except OSError:
                     pass
-            try:
-                with db() as conn:
-                    conn.execute("DELETE FROM push_jobs WHERE job_id = ?", (jid,))
-                    if created:
-                        conn.execute("DELETE FROM obs_stream_routes WHERE stream_key = ?", (stream_key,))
-            except Exception:
-                pass
+            if user_stopped or (rc == 0 and not lp):
+                try:
+                    with db() as conn:
+                        conn.execute("DELETE FROM push_jobs WHERE job_id = ?", (jid,))
+                        if created:
+                            conn.execute("DELETE FROM obs_stream_routes WHERE stream_key = ?", (stream_key,))
+                except Exception:
+                    pass
         threading.Thread(target=_monitor, args=(job_id,), daemon=True).start()
         self.send_json({"status": "ok", "job_id": job_id, "hls_slug": slug})
 
@@ -2855,6 +2859,7 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             job = active_pushes.get(job_id)
         if not job:
             raise AppError("push_not_found")
+        job["user_stopped"] = True
         job["proc"].terminate()
         self.send_json({"status": "ok"})
 
@@ -2984,7 +2989,20 @@ def cleanup_stale_sessions_loop() -> None:
             pass
 
 
+def _wait_for_rtmp(host: str, port: int = 1935, timeout: float = 60.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=2):
+                return True
+        except OSError:
+            time.sleep(2)
+    return False
+
+
 def resume_push_jobs() -> None:
+    if not _wait_for_rtmp(RTMP_HOST):
+        return
     try:
         with db() as conn:
             rows = conn.execute("SELECT * FROM push_jobs").fetchall()
@@ -3057,22 +3075,25 @@ def resume_push_jobs() -> None:
                     "dir_index": dir_index,
                     "push_rel_path": rel_path,
                     "is_folder": is_folder,
+                    "user_stopped": False,
                 }
-            def _monitor(jid: str = job_id, sk: str = stream_key, pfile: str | None = playlist_path) -> None:
-                proc.wait()
+            def _monitor(jid: str = job_id, sk: str = stream_key, pfile: str | None = playlist_path, lp: bool = loop) -> None:
+                rc = proc.wait()
                 with _pushes_lock:
-                    active_pushes.pop(jid, None)
+                    job_meta = active_pushes.pop(jid, {})
+                user_stopped = job_meta.get("user_stopped", False)
                 if pfile:
                     try:
                         os.unlink(pfile)
                     except OSError:
                         pass
-                try:
-                    with db() as conn:
-                        conn.execute("DELETE FROM push_jobs WHERE job_id = ?", (jid,))
-                        conn.execute("DELETE FROM obs_stream_routes WHERE stream_key = ?", (sk,))
-                except Exception:
-                    pass
+                if user_stopped or (rc == 0 and not lp):
+                    try:
+                        with db() as conn:
+                            conn.execute("DELETE FROM push_jobs WHERE job_id = ?", (jid,))
+                            conn.execute("DELETE FROM obs_stream_routes WHERE stream_key = ?", (sk,))
+                    except Exception:
+                        pass
             threading.Thread(target=_monitor, daemon=True).start()
         except Exception:
             try:
@@ -3084,7 +3105,7 @@ def resume_push_jobs() -> None:
 
 def main() -> None:
     init_db()
-    resume_push_jobs()
+    threading.Thread(target=resume_push_jobs, daemon=True).start()
     threading.Thread(target=monitor_streams_loop, daemon=True).start()
     threading.Thread(target=cleanup_stale_sessions_loop, daemon=True).start()
     host = os.getenv("HOST", "0.0.0.0")
