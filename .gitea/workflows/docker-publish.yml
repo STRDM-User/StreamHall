@@ -18,11 +18,12 @@ jobs:
       - name: Log in to Gitea Container Registry
         run: |
           echo "${{ secrets.CR_TOKEN }}" | \
-          docker login git.stdm.moe -u ${{ github.actor }} --password-stdin
+          docker login 127.0.0.1:3333 -u ${{ github.actor }} --password-stdin
 
       - name: Build and push
         run: |
-          IMAGE=git.stdm.moe/stardream/streamhall
+          IMAGE=127.0.0.1:3333/stardream/streamhall
+          PUBLIC=git.stdm.moe/stardream/streamhall
           REF="${{ github.ref }}"
 
           if [[ "$REF" == refs/tags/* ]]; then
