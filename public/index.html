@@ -677,6 +677,12 @@
     #sh-load-more-wrap {
       text-align: center;
       padding: 16px 0 24px;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+    #sh-load-more-wrap.lm-hidden {
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
     }
     #sh-load-more-btn {
       border: 1px solid var(--line);
@@ -737,7 +743,7 @@
       <div id="loading-indicator" class="loader"></div>
       <p id="error-message" class="message hidden"></p>
       <div id="stream-list"></div>
-      <div id="sh-load-more-wrap" style="display:none;">
+      <div id="sh-load-more-wrap" class="lm-hidden">
         <button id="sh-load-more-btn"></button>
       </div>
     </main>
@@ -1097,7 +1103,7 @@
         if (!streams.length) {
           errorMessage.textContent = emptyText(activeStreamLabel);
           errorMessage.classList.remove('hidden');
-          document.getElementById('sh-load-more-wrap').style.display = 'none';
+          document.getElementById('sh-load-more-wrap')?.classList.add('lm-hidden');
           return;
         }
         if (_visibleCount === 0) _visibleCount = _calcBatch();
@@ -1125,9 +1131,9 @@
         if (lmWrap && lmBtn) {
           if (streams.length > _visibleCount) {
             lmBtn.textContent = t('list.load_more');
-            lmWrap.style.display = '';
+            lmWrap.classList.remove('lm-hidden');
           } else {
-            lmWrap.style.display = 'none';
+            lmWrap.classList.add('lm-hidden');
           }
         }
       };
@@ -1139,6 +1145,7 @@
           activeStreamLabel = nextLabel;
           localStorage.setItem('home_stream_label', activeStreamLabel);
           streamList.classList.add('is-switching');
+          document.getElementById('sh-load-more-wrap')?.classList.add('lm-hidden');
           window.setTimeout(() => {
             _visibleCount = 0;
             renderStreams();
