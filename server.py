@@ -11,8 +11,11 @@ import mimetypes
 import os
 import re
 import secrets
+import subprocess
+import tempfile
 import threading
 import time
+import uuid
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -60,6 +63,31 @@ STREAM_MONITOR_INTERVAL = max(5, int(os.getenv("STREAM_MONITOR_INTERVAL", "10"))
 SRS_HTTP_ORIGIN = os.getenv("SRS_HTTP_ORIGIN", "http://srs:8080").rstrip("/")
 OBS_ROUTE_SLUG_LENGTH = max(12, int(os.getenv("OBS_ROUTE_SLUG_LENGTH", "22")))
 URL_PATH_SAFE = "/._~!$&'()*+,;=:@"
+
+# Video push
+_VIDEOS_DIRS_RAW = os.environ.get("VIDEOS_DIRS", "/app/videos")
+
+def _parse_videos_dirs(raw: str) -> list[dict]:
+    result = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item and not item.startswith("/"):
+            label, path = item.split(":", 1)
+        else:
+            label = os.path.basename(item.rstrip("/")) or item
+            path = item
+        result.append({"label": label, "path": path})
+    return result
+
+VIDEOS_DIRS: list[dict] = _parse_videos_dirs(_VIDEOS_DIRS_RAW)
+UPLOAD_DIR: str = VIDEOS_DIRS[0]["path"] if VIDEOS_DIRS else "/app/videos"
+RTMP_HOST = os.environ.get("RTMP_HOST", "localhost")
+VIDEO_EXTS = frozenset({".mp4", ".mkv", ".avi", ".flv", ".ts", ".mov", ".wmv", ".webm", ".m4v"})
+
+active_pushes: dict[str, dict] = {}
+_pushes_lock = threading.Lock()
 HLS_PROXY_PREFIX = "/proxy/hls"
 HLS_URI_RE = re.compile(r'URI="([^"]+)"')  # matches URI="..." attributes in HLS tag lines (e.g. EXT-X-KEY)
 
@@ -73,6 +101,8 @@ DEFAULT_SITE_SETTINGS = {
     "footer_markdown": "",
     "footer_markdown_en": "",
     "telegram_public_base_url": "",
+    "obs_rtmp_host": "",
+    "obs_playback_origin": "",
 }
 
 DEFAULT_TELEGRAM_SETTINGS = {
@@ -225,6 +255,21 @@ def init_postgres_db() -> None:
                 label TEXT NOT NULL DEFAULT '',
                 created_at INTEGER NOT NULL,
                 last_used_at INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS push_jobs (
+                job_id TEXT PRIMARY KEY,
+                dir_index INTEGER NOT NULL,
+                rel_path TEXT NOT NULL DEFAULT '',
+                filename TEXT NOT NULL DEFAULT '',
+                stream_key TEXT NOT NULL,
+                hls_slug TEXT NOT NULL DEFAULT '',
+                loop INTEGER NOT NULL DEFAULT 0,
+                is_folder INTEGER NOT NULL DEFAULT 0,
+                started_at INTEGER NOT NULL
             )
             """
         )
@@ -383,6 +428,36 @@ def hls_proxy_path(url: str) -> str:
     host = urlparse(url).netloc
     encoded = encode_proxy_target(url)
     return f"{HLS_PROXY_PREFIX}/{hls_proxy_host_token(host)}/{encoded}"
+
+
+PLAYABLE_VIDEO_EXTS = frozenset({".mp4", ".mkv", ".mov", ".webm", ".m4v"})
+
+
+def _dir_has_ext(path: str, exts: frozenset, max_depth: int = 10) -> bool:
+    """Return True if path contains any file with a matching extension (recursive, early exit)."""
+    if max_depth <= 0:
+        return False
+    try:
+        for name in os.listdir(path):
+            if name.startswith((".", "@", "#")):
+                continue
+            full = os.path.join(path, name)
+            if os.path.isfile(full):
+                if os.path.splitext(name)[1].lower() in exts:
+                    return True
+            elif os.path.isdir(full):
+                if _dir_has_ext(full, exts, max_depth - 1):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
+def video_proxy_path(dir_index: int, rel_path: str, filename: str) -> str:
+    payload = f"{dir_index}:{rel_path}:{filename}"
+    token = sign(f"video-proxy:{payload}")
+    encoded = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"/video/{token}/{encoded}"
 
 
 def is_hls_link(link: dict[str, object]) -> bool:
@@ -560,10 +635,47 @@ def decode_probe_text(data: bytes) -> str:
     return ""
 
 
+def resolve_video_file_path(url_path: str) -> str | None:
+    """Decode a /video/<token>/<encoded> path and return the absolute filepath, or None if invalid/missing."""
+    parts = url_path.strip("/").split("/", 2)
+    if len(parts) != 3:
+        return None
+    _, token, encoded = parts
+    padded = encoded + "=" * (-len(encoded) % 4)
+    try:
+        payload = base64.urlsafe_b64decode(padded).decode("utf-8")
+    except Exception:
+        return None
+    if not hmac.compare_digest(token, sign(f"video-proxy:{payload}")):
+        return None
+    payload_parts = payload.split(":", 2)
+    if len(payload_parts) != 3:
+        return None
+    dir_index_str, rel_path, filename = payload_parts
+    try:
+        dir_index = int(dir_index_str)
+        assert 0 <= dir_index < len(VIDEOS_DIRS)
+    except (ValueError, AssertionError):
+        return None
+    if rel_path and (".." in rel_path.split("/") or rel_path.startswith("/") or os.path.isabs(rel_path)):
+        return None
+    if not filename or "/" in filename or "\\" in filename or ".." in filename:
+        return None
+    filepath = (
+        os.path.join(VIDEOS_DIRS[dir_index]["path"], rel_path, filename)
+        if rel_path
+        else os.path.join(VIDEOS_DIRS[dir_index]["path"], filename)
+    )
+    return filepath if os.path.isfile(filepath) else None
+
+
 def probe_stream_url(raw_url: object, type_hint: object = "") -> dict[str, object]:
     url = str(raw_url or "").strip()
     if not url:
         return stream_probe_response(False)
+
+    if url.startswith("/video/"):
+        return stream_probe_response(resolve_video_file_path(url) is not None)
 
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
@@ -1085,6 +1197,9 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith(f"{HLS_PROXY_PREFIX}/"):
             self.proxy_hls_route(parsed.path, send_body=True)
             return
+        if parsed.path.startswith("/video/"):
+            self.serve_video_file(parsed.path, send_body=True)
+            return
         self.serve_static(parsed.path)
 
     def do_HEAD(self) -> None:
@@ -1097,6 +1212,9 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith(f"{HLS_PROXY_PREFIX}/"):
             self.proxy_hls_route(parsed.path, send_body=False)
+            return
+        if parsed.path.startswith("/video/"):
+            self.serve_video_file(parsed.path, send_body=False)
             return
         self.serve_static(parsed.path, send_body=False)
 
@@ -1245,6 +1363,12 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             elif action == "check_stream":
                 self.require_admin()
                 self.api_check_stream()
+            elif action == "get_obs_config":
+                self.require_admin()
+                self.api_get_obs_config()
+            elif action == "save_obs_config":
+                self.require_admin()
+                self.api_save_obs_config()
             elif action == "list_obs_routes":
                 self.require_admin()
                 self.api_list_obs_routes()
@@ -1290,6 +1414,27 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             elif action == "delete_api_key":
                 self.require_admin()
                 self.api_delete_api_key()
+            elif action == "list_videos":
+                self.require_admin()
+                self.api_list_videos()
+            elif action == "list_folder_videos":
+                self.require_admin()
+                self.api_list_folder_videos()
+            elif action == "upload_video":
+                self.require_admin()
+                self.api_upload_video()
+            elif action == "delete_video":
+                self.require_admin()
+                self.api_delete_video()
+            elif action == "start_push":
+                self.require_admin()
+                self.api_start_push()
+            elif action == "stop_push":
+                self.require_admin()
+                self.api_stop_push()
+            elif action == "list_pushes":
+                self.require_admin()
+                self.api_list_pushes()
             else:
                 self.error_json("invalid_action")
         except PermissionError:
@@ -1555,9 +1700,9 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         stream_label = normalize_stream_label(body.get("streamLabel"))
         with db() as conn:
             max_order = conn.execute(
-                "SELECT COALESCE(MAX(sort_order), 0) FROM streams WHERE stream_label = ?",
+                "SELECT COALESCE(MAX(sort_order), 0) AS v FROM streams WHERE stream_label = ?",
                 (stream_label,),
-            ).fetchone()[0]
+            ).fetchone()["v"]
             params = (
                 generate_public_id(conn),
                 stream_label,
@@ -1745,6 +1890,30 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if not row:
             raise AppError("stream_not_found")
         self.send_json({"status": "success", "data": self.check_stream_row(row)})
+
+    def api_get_obs_config(self) -> None:
+        with db() as conn:
+            rows = conn.execute(
+                "SELECT key, value FROM site_settings WHERE key IN (?, ?)",
+                ("obs_rtmp_host", "obs_playback_origin"),
+            ).fetchall()
+        data: dict[str, str] = {"obs_rtmp_host": "", "obs_playback_origin": ""}
+        for row in rows:
+            data[row["key"]] = row["value"]
+        self.send_json({"status": "ok", "obs_rtmp_host": data["obs_rtmp_host"], "obs_playback_origin": data["obs_playback_origin"]})
+
+    def api_save_obs_config(self) -> None:
+        body = self.read_json()
+        rtmp_host = str(body.get("obs_rtmp_host") or "").strip()
+        playback_origin = str(body.get("obs_playback_origin") or "").strip()
+        with db() as conn:
+            for key, value in [("obs_rtmp_host", rtmp_host), ("obs_playback_origin", playback_origin)]:
+                conn.execute(
+                    "INSERT INTO site_settings (key, value) VALUES (?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (key, value),
+                )
+        self.send_json({"status": "ok"})
 
     def api_list_obs_routes(self) -> None:
         with db() as conn:
@@ -2436,6 +2605,332 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         except (URLError, TimeoutError, OSError):
             self.send_error(HTTPStatus.BAD_GATEWAY)
 
+    def api_list_videos(self) -> None:
+        qs = parse_qs(urlparse(self.path).query)
+        dir_index_str = (qs.get("dir_index", [None])[0] or "").strip()
+        if not dir_index_str:
+            roots = [{"index": i, "label": d["label"]} for i, d in enumerate(VIDEOS_DIRS)]
+            self.send_json({"status": "ok", "roots": roots})
+            return
+        try:
+            dir_index = int(dir_index_str)
+        except ValueError:
+            raise AppError("invalid_filename")
+        if dir_index < 0 or dir_index >= len(VIDEOS_DIRS):
+            raise AppError("invalid_filename")
+        rel_path = (qs.get("rel_path", [""])[0] or "").strip()
+        if rel_path:
+            if ".." in rel_path.split("/") or rel_path.startswith("/") or os.path.isabs(rel_path):
+                raise AppError("invalid_rel_path")
+        base = VIDEOS_DIRS[dir_index]["path"]
+        target = os.path.join(base, rel_path) if rel_path else base
+        entries: list[dict] = []
+        if os.path.isdir(target):
+            try:
+                for name in os.listdir(target):
+                    if name.startswith((".", "@", "#")):
+                        continue
+                    full = os.path.join(target, name)
+                    if os.path.isdir(full):
+                        entries.append({
+                            "name": name,
+                            "type": "dir",
+                            "has_playable": _dir_has_ext(full, PLAYABLE_VIDEO_EXTS),
+                            "has_video": _dir_has_ext(full, VIDEO_EXTS),
+                        })
+                    elif os.path.isfile(full) and os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+                        try:
+                            size = os.path.getsize(full)
+                        except OSError:
+                            size = 0
+                        entry_dict: dict = {"name": name, "type": "file", "size": size}
+                        if os.path.splitext(name)[1].lower() in PLAYABLE_VIDEO_EXTS:
+                            entry_dict["video_url"] = video_proxy_path(dir_index, rel_path, name)
+                        entries.append(entry_dict)
+            except OSError:
+                pass
+        entries.sort(key=lambda e: (0 if e["type"] == "dir" else 1, e["name"].lower()))
+        self.send_json({
+            "status": "ok",
+            "dir_index": dir_index,
+            "rel_path": rel_path,
+            "label": VIDEOS_DIRS[dir_index]["label"],
+            "entries": entries,
+        })
+
+    def api_list_folder_videos(self) -> None:
+        qs = parse_qs(urlparse(self.path).query)
+        dir_index_str = (qs.get("dir_index", [None])[0] or "").strip()
+        rel_path = (qs.get("rel_path", [""])[0] or "").strip()
+        mode = (qs.get("mode", [""])[0] or "").strip()
+        try:
+            dir_index = int(dir_index_str)
+        except (ValueError, TypeError):
+            raise AppError("invalid_filename")
+        if dir_index < 0 or dir_index >= len(VIDEOS_DIRS):
+            raise AppError("invalid_filename")
+        if rel_path and (".." in rel_path.split("/") or rel_path.startswith("/") or os.path.isabs(rel_path)):
+            raise AppError("invalid_rel_path")
+        base = VIDEOS_DIRS[dir_index]["path"]
+        target = os.path.join(base, rel_path) if rel_path else base
+        if not os.path.isdir(target):
+            raise AppError("file_not_found")
+        use_exts = VIDEO_EXTS if mode == "push" else PLAYABLE_VIDEO_EXTS
+        files: list[dict] = []
+        try:
+            for dirpath, dirnames, filenames in os.walk(target):
+                dirnames[:] = sorted(d for d in dirnames if not d.startswith((".", "@", "#")))
+                for name in sorted(filenames):
+                    if name.startswith((".", "@", "#")):
+                        continue
+                    if os.path.splitext(name)[1].lower() not in use_exts:
+                        continue
+                    full = os.path.join(dirpath, name)
+                    file_dir_rel = os.path.relpath(dirpath, base).replace("\\", "/")
+                    if file_dir_rel == ".":
+                        file_dir_rel = ""
+                    display_name = os.path.relpath(full, target).replace("\\", "/")
+                    try:
+                        size = os.path.getsize(full)
+                    except OSError:
+                        size = 0
+                    entry: dict = {"name": name, "size": size, "file_dir_rel": file_dir_rel, "display_name": display_name}
+                    if mode != "push":
+                        entry["video_url"] = video_proxy_path(dir_index, file_dir_rel, name)
+                    files.append(entry)
+        except OSError:
+            pass
+        self.send_json({"status": "ok", "files": files})
+
+    def api_upload_video(self) -> None:
+        qs = parse_qs(urlparse(self.path).query)
+        filename = (qs.get("filename", [""])[0] or "").strip()
+        if not filename or "/" in filename or "\\" in filename or ".." in filename:
+            raise AppError("invalid_filename")
+        if os.path.splitext(filename)[1].lower() not in VIDEO_EXTS:
+            raise AppError("invalid_file_type")
+        content_length = int(self.headers.get("Content-Length", "0") or "0")
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        dest = os.path.join(UPLOAD_DIR, filename)
+        with open(dest, "wb") as f:
+            remaining = content_length
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 65536))
+                if not chunk:
+                    break
+                f.write(chunk)
+                remaining -= len(chunk)
+        self.send_json({"status": "ok", "filename": filename})
+
+    def api_delete_video(self) -> None:
+        body = self.read_json()
+        dir_index = int(body.get("dir_index", -1))
+        filename = (body.get("filename") or "").strip()
+        rel_path = (body.get("rel_path") or "").strip()
+        if dir_index < 0 or dir_index >= len(VIDEOS_DIRS):
+            raise AppError("invalid_filename")
+        if not filename or "/" in filename or "\\" in filename or ".." in filename:
+            raise AppError("invalid_filename")
+        if rel_path and (".." in rel_path.split("/") or rel_path.startswith("/") or os.path.isabs(rel_path)):
+            raise AppError("invalid_rel_path")
+        path = os.path.join(VIDEOS_DIRS[dir_index]["path"], rel_path, filename) if rel_path else os.path.join(VIDEOS_DIRS[dir_index]["path"], filename)
+        if not os.path.isfile(path):
+            raise AppError("file_not_found")
+        os.remove(path)
+        self.send_json({"status": "ok"})
+
+    def api_start_push(self) -> None:
+        body = self.read_json()
+        dir_index = int(body.get("dir_index", -1))
+        filename = (body.get("filename") or "").strip()
+        stream_key = (body.get("stream_key") or "").strip()
+        loop = bool(body.get("loop", False))
+        rel_path = (body.get("rel_path") or "").strip()
+        if dir_index < 0 or dir_index >= len(VIDEOS_DIRS):
+            raise AppError("invalid_filename")
+        is_folder = not filename
+        if not is_folder and ("/" in filename or "\\" in filename or ".." in filename):
+            raise AppError("invalid_filename")
+        if rel_path and (".." in rel_path.split("/") or rel_path.startswith("/") or os.path.isabs(rel_path)):
+            raise AppError("invalid_rel_path")
+        if not stream_key:
+            raise AppError("stream_key_required")
+        playlist_path: str | None = None
+        if is_folder:
+            folder = os.path.join(VIDEOS_DIRS[dir_index]["path"], rel_path) if rel_path else VIDEOS_DIRS[dir_index]["path"]
+            if not os.path.isdir(folder):
+                raise AppError("file_not_found")
+            video_files = sorted([
+                f for f in os.listdir(folder)
+                if not f.startswith((".", "@", "#"))
+                and os.path.isfile(os.path.join(folder, f))
+                and os.path.splitext(f)[1].lower() in VIDEO_EXTS
+            ])
+            if not video_files:
+                raise AppError("file_not_found")
+            fd, playlist_path = tempfile.mkstemp(suffix=".txt", prefix="sh_concat_")
+            with os.fdopen(fd, "w") as pf:
+                for vf in video_files:
+                    pf.write(f"file '{os.path.join(folder, vf)}'\n")
+            display_name = rel_path.split("/")[-1] if rel_path else VIDEOS_DIRS[dir_index]["label"]
+            cmd = ["ffmpeg", "-re"]
+            if loop:
+                cmd += ["-stream_loop", "-1"]
+            cmd += ["-f", "concat", "-safe", "0", "-i", playlist_path, "-c", "copy", "-f", "flv",
+                    f"rtmp://{RTMP_HOST}:1935/live/{stream_key}"]
+        else:
+            filepath = os.path.join(VIDEOS_DIRS[dir_index]["path"], rel_path, filename) if rel_path else os.path.join(VIDEOS_DIRS[dir_index]["path"], filename)
+            if not os.path.isfile(filepath):
+                raise AppError("file_not_found")
+            display_name = filename
+            cmd = ["ffmpeg", "-re"]
+            if loop:
+                cmd += ["-stream_loop", "-1"]
+            cmd += ["-i", filepath, "-c", "copy", "-f", "flv",
+                    f"rtmp://{RTMP_HOST}:1935/live/{stream_key}"]
+        with _pushes_lock:
+            for job in active_pushes.values():
+                if job["stream_key"] == stream_key:
+                    if playlist_path:
+                        try:
+                            os.unlink(playlist_path)
+                        except OSError:
+                            pass
+                    raise AppError("push_already_running")
+        slug = obs_route_slug(stream_key)
+        with db() as conn:
+            res = conn.execute(
+                "INSERT INTO obs_stream_routes (stream_key, public_slug, created_at) VALUES (?, ?, ?) ON CONFLICT (stream_key) DO NOTHING",
+                (stream_key, slug, now()),
+            )
+            push_created_route = res.rowcount == 1
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        job_id = uuid.uuid4().hex[:8]
+        started = now()
+        with _pushes_lock:
+            active_pushes[job_id] = {
+                "proc": proc,
+                "filename": display_name,
+                "stream_key": stream_key,
+                "hls_slug": slug,
+                "push_created_route": push_created_route,
+                "loop": loop,
+                "started_at": started,
+                "dir_index": dir_index,
+                "push_rel_path": rel_path,
+                "is_folder": is_folder,
+            }
+        try:
+            with db() as conn:
+                conn.execute(
+                    "INSERT INTO push_jobs (job_id, dir_index, rel_path, filename, stream_key, hls_slug, loop, is_folder, started_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (job_id, dir_index, rel_path, display_name, stream_key, slug, int(loop), int(is_folder), started),
+                )
+        except Exception:
+            pass
+        def _monitor(jid: str, stream_key: str = stream_key, created: bool = push_created_route, pfile: str | None = playlist_path) -> None:
+            proc.wait()
+            with _pushes_lock:
+                active_pushes.pop(jid, None)
+            if pfile:
+                try:
+                    os.unlink(pfile)
+                except OSError:
+                    pass
+            try:
+                with db() as conn:
+                    conn.execute("DELETE FROM push_jobs WHERE job_id = ?", (jid,))
+                    if created:
+                        conn.execute("DELETE FROM obs_stream_routes WHERE stream_key = ?", (stream_key,))
+            except Exception:
+                pass
+        threading.Thread(target=_monitor, args=(job_id,), daemon=True).start()
+        self.send_json({"status": "ok", "job_id": job_id, "hls_slug": slug})
+
+    def api_stop_push(self) -> None:
+        body = self.read_json()
+        job_id = (body.get("job_id") or "").strip()
+        with _pushes_lock:
+            job = active_pushes.get(job_id)
+        if not job:
+            raise AppError("push_not_found")
+        job["proc"].terminate()
+        self.send_json({"status": "ok"})
+
+    def api_list_pushes(self) -> None:
+        result = []
+        with _pushes_lock:
+            for job_id, job in list(active_pushes.items()):
+                result.append({
+                    "job_id": job_id,
+                    "filename": job["filename"],
+                    "stream_key": job["stream_key"],
+                    "hls_slug": job.get("hls_slug", ""),
+                    "loop": job["loop"],
+                    "elapsed": now() - job["started_at"],
+                    "running": job["proc"].poll() is None,
+                    "dir_index": job.get("dir_index", -1),
+                    "push_rel_path": job.get("push_rel_path", ""),
+                    "is_folder": job.get("is_folder", False),
+                })
+        self.send_json({"status": "ok", "pushes": result})
+
+    def serve_video_file(self, path_str: str, send_body: bool = True) -> None:
+        filepath = resolve_video_file_path(path_str)
+        if filepath is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        filename = os.path.basename(filepath)
+        file_size = os.path.getsize(filepath)
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        range_header = self.headers.get("Range", "").strip()
+        if range_header:
+            m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            if not m:
+                self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                return
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else file_size - 1
+            if start > end or start >= file_size:
+                self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                return
+            end = min(end, file_size - 1)
+            length = end - start + 1
+            self.send_response(HTTPStatus.PARTIAL_CONTENT)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+            self.send_header("Content-Length", str(length))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            if send_body:
+                with open(filepath, "rb") as f:
+                    f.seek(start)
+                    remaining = length
+                    while remaining > 0:
+                        chunk = f.read(min(65536, remaining))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        remaining -= len(chunk)
+        else:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            if send_body:
+                with open(filepath, "rb") as f:
+                    while True:
+                        chunk = f.read(65536)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+
     def serve_static(self, request_path: str, send_body: bool = True) -> None:
         routes = {
             "/": "index.html",
@@ -2489,8 +2984,107 @@ def cleanup_stale_sessions_loop() -> None:
             pass
 
 
+def resume_push_jobs() -> None:
+    try:
+        with db() as conn:
+            rows = conn.execute("SELECT * FROM push_jobs").fetchall()
+    except Exception:
+        return
+    for row in rows:
+        job_id = row["job_id"]
+        try:
+            dir_index = int(row["dir_index"])
+            if dir_index < 0 or dir_index >= len(VIDEOS_DIRS):
+                raise ValueError("invalid dir_index")
+            rel_path = row["rel_path"] or ""
+            filename = row["filename"] or ""
+            stream_key = row["stream_key"]
+            hls_slug = row["hls_slug"] or obs_route_slug(stream_key)
+            loop = bool(row["loop"])
+            is_folder = bool(row["is_folder"])
+            playlist_path: str | None = None
+            if is_folder:
+                folder = os.path.join(VIDEOS_DIRS[dir_index]["path"], rel_path) if rel_path else VIDEOS_DIRS[dir_index]["path"]
+                if not os.path.isdir(folder):
+                    raise FileNotFoundError(folder)
+                video_files = sorted([
+                    f for f in os.listdir(folder)
+                    if not f.startswith((".", "@", "#"))
+                    and os.path.isfile(os.path.join(folder, f))
+                    and os.path.splitext(f)[1].lower() in VIDEO_EXTS
+                ])
+                if not video_files:
+                    raise FileNotFoundError(folder)
+                fd, playlist_path = tempfile.mkstemp(suffix=".txt", prefix="sh_concat_")
+                with os.fdopen(fd, "w") as pf:
+                    for vf in video_files:
+                        pf.write(f"file '{os.path.join(folder, vf)}'\n")
+                display_name = rel_path.split("/")[-1] if rel_path else VIDEOS_DIRS[dir_index]["label"]
+                cmd = ["ffmpeg", "-re"]
+                if loop:
+                    cmd += ["-stream_loop", "-1"]
+                cmd += ["-f", "concat", "-safe", "0", "-i", playlist_path, "-c", "copy", "-f", "flv",
+                        f"rtmp://{RTMP_HOST}:1935/live/{stream_key}"]
+            else:
+                filepath = (
+                    os.path.join(VIDEOS_DIRS[dir_index]["path"], rel_path, filename)
+                    if rel_path
+                    else os.path.join(VIDEOS_DIRS[dir_index]["path"], filename)
+                )
+                if not os.path.isfile(filepath):
+                    raise FileNotFoundError(filepath)
+                display_name = filename
+                cmd = ["ffmpeg", "-re"]
+                if loop:
+                    cmd += ["-stream_loop", "-1"]
+                cmd += ["-i", filepath, "-c", "copy", "-f", "flv",
+                        f"rtmp://{RTMP_HOST}:1935/live/{stream_key}"]
+            with db() as conn:
+                conn.execute(
+                    "INSERT INTO obs_stream_routes (stream_key, public_slug, created_at) VALUES (?, ?, ?) ON CONFLICT (stream_key) DO NOTHING",
+                    (stream_key, hls_slug, now()),
+                )
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            with _pushes_lock:
+                active_pushes[job_id] = {
+                    "proc": proc,
+                    "filename": display_name,
+                    "stream_key": stream_key,
+                    "hls_slug": hls_slug,
+                    "push_created_route": True,
+                    "loop": loop,
+                    "started_at": now(),
+                    "dir_index": dir_index,
+                    "push_rel_path": rel_path,
+                    "is_folder": is_folder,
+                }
+            def _monitor(jid: str = job_id, sk: str = stream_key, pfile: str | None = playlist_path) -> None:
+                proc.wait()
+                with _pushes_lock:
+                    active_pushes.pop(jid, None)
+                if pfile:
+                    try:
+                        os.unlink(pfile)
+                    except OSError:
+                        pass
+                try:
+                    with db() as conn:
+                        conn.execute("DELETE FROM push_jobs WHERE job_id = ?", (jid,))
+                        conn.execute("DELETE FROM obs_stream_routes WHERE stream_key = ?", (sk,))
+                except Exception:
+                    pass
+            threading.Thread(target=_monitor, daemon=True).start()
+        except Exception:
+            try:
+                with db() as conn:
+                    conn.execute("DELETE FROM push_jobs WHERE job_id = ?", (job_id,))
+            except Exception:
+                pass
+
+
 def main() -> None:
     init_db()
+    resume_push_jobs()
     threading.Thread(target=monitor_streams_loop, daemon=True).start()
     threading.Thread(target=cleanup_stale_sessions_loop, daemon=True).start()
     host = os.getenv("HOST", "0.0.0.0")

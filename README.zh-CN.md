@@ -32,7 +32,8 @@
 - **管理后台** - 直播的增删改查、启用/禁用、拖拽排序；多播放源管理
 - **观看统计** - 会话追踪、独立访客数、峰值并发、平均时长、设备 / 浏览器 / 操作系统 / 地理分布实时看板，支持 CSV 导出
 - **Telegram 推送** - 可按直播单独配置，开播 / 关播自动发送通知
-- **推流配置** - SRS RTMP 推流辅助工具，隐藏 HLS 路由代理（公开地址不暴露真实推流码）
+- **推流配置** - 内置文件浏览器，支持单文件和文件夹 RTMP 推流管理；文件夹可同时向多个推流码批量推送独立任务；推流状态内联显示于文件行，详情弹窗提供实时时长、复制地址和停止操作；同时支持远端编码器 RTMP 推流配置；隐藏 HLS 路由代理（`/h/<slug>`），真实推流码不出现在公开地址中
+- **VOD 点播 / 视频服务** - 带 HMAC 签名的 `/video/` URL，支持 HTTP Range 请求（可 seek）；文件浏览器中可直接将视频文件或文件夹发布为归档直播
 - **HLS 代理** - 带签名验证的 `/proxy/hls/` 路由，解决跨域 HLS 播放问题
 - **API 密钥鉴权** - 在后台生成 Token，可通过 API 密钥对所有管理及统计接口进行程序化访问
 
@@ -90,6 +91,17 @@ StreamHall initial admin password: <random-password>
 docker compose pull && docker compose up -d
 ```
 
+**重置忘记的管理员密码**
+
+```bash
+docker exec streamhall-postgres psql -U streamhall -d streamhall \
+  -c "DELETE FROM site_settings WHERE key='admin_password_hash';"
+docker restart streamhall
+docker logs streamhall
+```
+
+删除密码哈希后，StreamHall 在下次启动时会重新生成随机密码并打印到日志中。
+
 <div align="right">
 
 [![][back-to-top]](#readme-top)
@@ -138,9 +150,37 @@ python server.py
 | `STREAM_PROBE_TIMEOUT` | `4` | 否 | 流地址探测超时秒数 |
 | `STREAM_MONITOR_INTERVAL` | `10` | 否 | 流存活检测间隔秒数 |
 | `TELEGRAM_TIMEOUT` | `6` | 否 | Telegram API 请求超时秒数 |
+| `RTMP_HOST` | `srs` | 否 | 本地推流任务使用的 SRS 容器主机名 |
+| `VIDEOS_DIRS` | *(未设置)* | 否 | 文件浏览器暴露的目录，逗号分隔。可为每个路径加标签前缀：`label:/app/path`。多个示例：`movies:/app/movies,shows:/app/shows` |
 
 > [!WARNING]
 > 在将 StreamHall 暴露到网络前，务必修改 `SECRET_KEY` 和 `POSTGRES_PASSWORD`。默认值仅为占位符，安全性极低。
+
+**挂载本地推流视频目录**
+
+*方式一 - 单一基路径，多个来源作为子目录：*
+
+将多个宿主机路径挂载到同一容器基路径的子目录下，文件浏览器中以子文件夹形式展示。
+
+```yaml
+environment:
+  VIDEOS_DIRS: "/app/videos"
+volumes:
+  - ./videos:/app/videos/local
+  - /your/media/path:/app/videos/external
+```
+
+*方式二 - 多个带标签的顶级目录：*
+
+每个路径在文件浏览器中作为独立的顶级条目显示。
+
+```yaml
+environment:
+  VIDEOS_DIRS: "/app/videos,external:/app/media/external"
+volumes:
+  - ./videos:/app/videos
+  - /your/media/path:/app/media/external
+```
 
 <div align="right">
 
@@ -176,7 +216,9 @@ RTMP 服务器：  rtmp://HOST:1935/live
 推流码：       your-stream-key
 ```
 
-管理后台的**推流配置**页面可生成隐藏公开 HLS 地址（`/h/<slug>/...`），通过 Nginx 在 `8889` 端口对外提供访问，真实推流码不会出现在公开 URL 中。
+管理后台的**本地推流**页面提供媒体目录文件浏览器。选择单个视频文件可使用自定义推流码发起 RTMP 推流；选择文件夹可同时为其中所有视频分别分配独立推流码并批量启动。每个文件行内联显示推流状态，点击"编辑推流"可查看实时时长、复制推流/播放地址和停止操作。
+
+隐藏公开 HLS 地址（`/h/<slug>/...`）通过 Nginx 在 `8889` 端口对外提供访问，真实推流码不会出现在公开 URL 中。
 
 > [!NOTE]
 > RTMP 主机字段支持填写自定义端口，如 `live.example.com:1935`。若使用非标准端口，请勿将 `:1935` 硬编码到地址中。
@@ -202,6 +244,7 @@ RTMP 服务器：  rtmp://HOST:1935/live
 | `GET` | `/api?action=site_settings` | 站点标题、简介、品牌设置 |
 | `GET` | `/api?action=get_player_data&id=<public_id>` | 播放器播放源及元数据 |
 | `POST` | `/api?action=verify_password` | 验证直播访问密码 |
+| `GET` | `/video/<token>/<payload>` | 签名 VOD 点播端点，支持 HTTP Range |
 
 ### 管理接口（需鉴权）
 
@@ -222,6 +265,10 @@ RTMP 服务器：  rtmp://HOST:1935/live
 | `GET` | `/api?action=list_api_keys` | 列出所有 API 密钥（不返回 Token 明文） |
 | `POST` | `/api?action=create_api_key` | 创建密钥（Token 仅返回一次） |
 | `POST` | `/api?action=delete_api_key` | 按 `id` 撤销密钥 |
+| `GET` | `/api?action=list_pushes` | 列出当前活跃推流任务 |
+| `POST` | `/api?action=start_push` | 为指定文件启动 RTMP 推流任务 |
+| `POST` | `/api?action=stop_push` | 按推流码停止推流任务 |
+| `GET` | `/api?action=list_folder_videos` | 列出目录内可播放文件及签名 URL |
 
 ### 统计接口（需鉴权）
 

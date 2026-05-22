@@ -42,12 +42,60 @@
       box-sizing: border-box;
     }
 
+    html {
+      scrollbar-width: none;
+    }
+    html::-webkit-scrollbar {
+      display: none;
+    }
+    #sh-scrollbar {
+      position: fixed;
+      right: 4px;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      z-index: 9990;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    #sh-scrollbar.sh-sb-vis {
+      pointer-events: auto;
+      opacity: 1;
+    }
+    #sh-scrollbar.dragging {
+      pointer-events: auto;
+    }
+    #sh-scrollbar-thumb {
+      position: absolute;
+      right: 0;
+      width: 6px;
+      min-height: 40px;
+      border-radius: 999px;
+      background: rgba(78, 126, 232, 0.35);
+      transition: background 0.15s;
+      cursor: pointer;
+      user-select: none;
+    }
+    #sh-scrollbar-thumb:hover,
+    #sh-scrollbar.dragging #sh-scrollbar-thumb {
+      background: rgba(78, 126, 232, 0.65);
+    }
+    :root[data-theme="dark"] #sh-scrollbar-thumb {
+      background: rgba(147, 197, 253, 0.28);
+    }
+    :root[data-theme="dark"] #sh-scrollbar-thumb:hover,
+    :root[data-theme="dark"] #sh-scrollbar.dragging #sh-scrollbar-thumb {
+      background: rgba(147, 197, 253, 0.6);
+    }
+
     body {
       min-height: 100vh;
       margin: 0;
       background:
         linear-gradient(135deg, rgba(246, 249, 255, 0.98), rgba(255, 246, 250, 0.92) 50%, rgba(242, 255, 252, 0.96)),
         linear-gradient(90deg, rgba(78, 126, 232, 0.08), rgba(242, 99, 137, 0.07));
+      background-attachment: fixed;
       color: var(--text);
       font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
     }
@@ -56,6 +104,7 @@
       background:
         linear-gradient(135deg, rgba(15, 20, 34, 0.98), rgba(28, 35, 54, 0.94) 52%, rgba(30, 24, 42, 0.98)),
         linear-gradient(90deg, rgba(25, 184, 177, 0.1), rgba(242, 99, 137, 0.08));
+      background-attachment: fixed;
       color: #d8deea;
     }
 
@@ -321,7 +370,7 @@
 
     .link-row {
       display: grid;
-      grid-template-columns: 1.2fr 0.8fr 1.8fr 1.4fr 1.6fr auto;
+      grid-template-columns: auto 1.2fr 0.8fr 1.8fr 1.4fr 1.6fr auto;
       gap: 8px;
       align-items: start;
       margin-bottom: 10px;
@@ -992,6 +1041,8 @@
     .drag-handle:active { cursor:grabbing; }
     .stream-row.drag-over { outline:2px solid var(--blue); outline-offset:-2px; border-radius:6px; }
     .stream-row.dragging { opacity:.35; }
+    .link-row.drag-over { outline:2px solid var(--blue); outline-offset:-2px; border-radius:6px; }
+    .link-row.dragging { opacity:.35; }
     .modal-close-btn { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; padding:2px 6px; line-height:1; box-shadow:none; transform:none !important; }
     .modal-close-btn:hover { color:var(--text); filter:none; }
     .geo-section { border:1px solid var(--line); border-radius:8px; background:var(--panel); backdrop-filter:blur(14px); padding:20px 22px; margin-top:20px; }
@@ -1004,6 +1055,20 @@
     .geo-bar-fill  { height:100%; border-radius:999px; background:var(--blue); opacity:.75; }
     .sessions-pagination { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
     .sessions-pagination .page-info { font-size:.82rem; color:var(--muted); font-weight:800; }
+    /* Toast */
+    #sh-toast-wrap { position:fixed; bottom:24px; right:24px; z-index:99999; display:flex; flex-direction:column; align-items:flex-end; gap:8px; pointer-events:none; }
+    .sh-toast { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; min-width:220px; max-width:360px; background:var(--panel); border:1px solid var(--line); box-shadow:0 4px 18px rgba(0,0,0,.18); font-size:.88em; pointer-events:auto; animation:sh-toast-in .22s ease; }
+    .sh-toast.leaving { animation:sh-toast-out .22s ease forwards; }
+    .sh-toast-icon  { font-size:1em; flex-shrink:0; }
+    .sh-toast-msg   { flex:1; line-height:1.4; word-break:break-word; }
+    .sh-toast-close { background:none; border:none; cursor:pointer; color:var(--muted); font-size:1em; padding:0 0 0 6px; opacity:.6; flex-shrink:0; }
+    .sh-toast-close:hover { opacity:1; }
+    .sh-toast[data-type="success"] { border-left:3px solid var(--mint); }
+    .sh-toast[data-type="error"]   { border-left:3px solid var(--rose); }
+    .sh-toast[data-type="info"]    { border-left:3px solid var(--blue); }
+    .sh-toast[data-type="warn"]    { border-left:3px solid var(--gold); }
+    @keyframes sh-toast-in  { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes sh-toast-out { from { opacity:1; transform:translateX(0); }    to { opacity:0; transform:translateX(18px); } }
   </style>
 </head>
 
@@ -1035,7 +1100,7 @@
       <div class="site-actions">
         <a class="button-link btn-secondary" href="/" data-i18n="nav.back">返回首页</a>
         <button id="logout-btn" class="btn-secondary" data-i18n="nav.logout">退出登录</button>
-        <button id="lang-toggle" class="theme-toggle" type="button" style="font-size:.82rem;font-weight:900;width:auto;padding:0 10px;" aria-label="切换语言" title="切换语言">EN</button>
+        <button id="lang-toggle" class="theme-toggle" type="button" style="font-size:.82rem;font-weight:900;width:auto;padding:0 10px;" data-i18n-title="lang.toggle_title">EN</button>
         <button class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
       </div>
     </nav>
@@ -1055,7 +1120,8 @@
             <button type="button" class="admin-sub-btn" data-stream-label="archive">ARCHIVE</button>
           </div>
         </div>
-        <button type="button" class="admin-menu-btn" data-admin-view-target="obs" data-i18n="menu.obs">直播推流</button>
+        <button type="button" class="admin-menu-btn" data-admin-view-target="local" data-i18n="menu.push">本地推流</button>
+        <button type="button" class="admin-menu-btn" data-admin-view-target="remote" data-i18n="menu.obs">远端推流</button>
         <button type="button" class="admin-menu-btn" data-admin-view-target="telegram" data-i18n="menu.telegram">TG 推送</button>
         <button type="button" class="admin-menu-btn" data-admin-view-target="site" data-i18n="menu.site">网站设置</button>
       </aside>
@@ -1134,7 +1200,7 @@
           <button type="button" class="btn-primary" id="api-key-create-btn" data-i18n="btn.create_api_key">生成密钥</button>
         </div>
         <div id="api-key-new-token" class="hidden" style="background:var(--panel);border:1.5px solid var(--mint);border-radius:7px;padding:12px 14px;margin-bottom:12px;">
-          <div style="font-size:.78rem;color:var(--mint);font-weight:800;margin-bottom:6px;" data-i18n="api.new_token_hint">请复制并妥善保管——密钥不会再次显示</div>
+          <div style="font-size:.78rem;color:var(--mint);font-weight:800;margin-bottom:6px;" data-i18n="api.new_token_hint">请复制并妥善保管 - 密钥不会再次显示</div>
           <div style="display:flex;gap:8px;align-items:center;">
             <code id="api-key-new-token-value" style="flex:1;word-break:break-all;font-size:.82rem;"></code>
             <button type="button" id="api-key-copy-btn" class="btn-primary" style="white-space:nowrap;" data-i18n="api.copy">复制</button>
@@ -1213,9 +1279,9 @@
       </form>
     </div>
 
-    <div class="admin-section admin-view" data-admin-view="obs">
+    <div class="admin-section admin-view" data-admin-view="remote">
       <p class="section-kicker" data-i18n="kicker.obs">Stream Setup</p>
-      <h2 data-i18n="section.obs">推流配置</h2>
+      <h2 data-i18n="section.obs">远端推流</h2>
       <p class="hint" data-i18n="hint.obs_rtmp">推流端使用 RTMP 推流到 NAS，播放器使用 SRS 输出的 HLS 或 FLV 地址。</p>
       <div class="form-grid">
         <div>
@@ -1275,7 +1341,26 @@
           </div>
           <button type="button" id="obs-route-add-btn" class="btn-primary" data-i18n="btn.gen_route">生成映射</button>
         </div>
+        <input type="text" id="obs-route-search" placeholder="搜索推流码" data-i18n="ph.obs_route_search" style="width:100%;box-sizing:border-box;margin:8px 0 6px;font-size:.85em;padding:5px 9px;">
         <div id="obs-route-list" class="obs-route-list"></div>
+        <div id="obs-route-pag" style="display:none;align-items:center;justify-content:flex-end;gap:12px;margin-top:10px;font-size:.83em;line-height:1;">
+          <div style="display:flex;align-items:center;gap:5px;color:var(--muted);white-space:nowrap;">
+            <span data-i18n="dash.per_page">每页</span>
+            <select id="or-page-size" style="font-size:.9em;padding:2px 5px;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:inherit;">
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="0" data-i18n="dash.all">全部</option>
+            </select>
+            <span data-i18n="dash.rows_unit">条</span>
+          </div>
+          <span id="or-pag-info" style="color:var(--muted);min-width:70px;text-align:center;white-space:nowrap;"></span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <button type="button" id="or-prev" class="btn-secondary" style="padding:3px 9px;font-size:.85em;">&#8249;</button>
+            <button type="button" id="or-next" class="btn-secondary" style="padding:3px 9px;font-size:.85em;">&#8250;</button>
+          </div>
+        </div>
       </div>
       <p id="obs-status" class="status hidden"></p>
     </div>
@@ -1417,6 +1502,24 @@
             </tbody>
           </table>
         </div>
+        <div id="dash-streams-pag" style="display:none;align-items:center;justify-content:flex-end;gap:12px;margin-top:10px;font-size:.83em;line-height:1;">
+          <div style="display:flex;align-items:center;gap:5px;color:var(--muted);white-space:nowrap;">
+            <span data-i18n="dash.per_page">每页</span>
+            <select id="ds-page-size" style="font-size:.9em;padding:2px 5px;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:inherit;">
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="0" data-i18n="dash.all">全部</option>
+            </select>
+            <span data-i18n="dash.rows_unit">条</span>
+          </div>
+          <span id="ds-pag-info" style="color:var(--muted);min-width:70px;text-align:center;white-space:nowrap;"></span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <button type="button" id="ds-prev" class="btn-secondary" style="padding:3px 9px;font-size:.85em;">&#8249;</button>
+            <button type="button" id="ds-next" class="btn-secondary" style="padding:3px 9px;font-size:.85em;">&#8250;</button>
+          </div>
+        </div>
       </div>
       <div class="geo-section">
         <div class="geo-section-head">
@@ -1430,6 +1533,28 @@
         <div class="geo-map-canvas" id="dash-geo-map"></div>
         <div class="geo-country-list" id="dash-geo-list"></div>
       </div>
+    </div>
+
+    <div class="admin-section admin-view" data-admin-view="local">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:18px;">
+        <div>
+          <p class="section-kicker" data-i18n="kicker.push">Video Push</p>
+          <h2 style="margin:0;" data-i18n="section.push">本地推流</h2>
+        </div>
+        <button type="button" id="upload-video-btn" class="btn-primary" data-i18n="btn.upload_video">上传视频</button>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div id="push-sidebar" style="width:140px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;"></div>
+        <div style="flex:1;min-width:0;">
+          <div id="push-breadcrumb" style="margin-bottom:10px;font-size:.85em;color:var(--muted);"></div>
+          <div style="position:relative;margin-bottom:10px;">
+            <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;font-size:.85em;">&#128269;</span>
+            <input type="search" id="push-search-input" placeholder="搜索文件..." style="width:100%;box-sizing:border-box;padding:7px 10px 7px 30px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);font-size:.85em;outline:none;" autocomplete="off">
+          </div>
+          <div id="push-entry-list"></div>
+        </div>
+      </div>
+      <input type="file" id="video-file-input" accept=".mp4,.mkv,.avi,.flv,.ts,.mov,.wmv,.webm,.m4v,video/*" style="display:none">
     </div>
       </main>
     </div>
@@ -1447,7 +1572,7 @@
         // section-kickers: zh shows English (existing design), en shows Chinese (mirrored)
         'kicker.site_settings': 'Site Settings',
         'kicker.telegram':      'Telegram Bot',
-        'kicker.obs':           'Stream Setup',
+        'kicker.obs':           'Remote Push',
         'kicker.stream_records':'Stream Records',
         'kicker.analytics':     'Analytics',
         'kicker.device':        'Device',
@@ -1457,7 +1582,7 @@
         // section headings
         'section.site_settings': '网站设置',
         'section.telegram':      'TG Bot 推送',
-        'section.obs':           '推流配置',
+        'section.obs':           '远端推流',
         'section.stream_records':'已录入的直播',
         'section.analytics':     '数据看板',
         'section.device':        '设备分布',
@@ -1476,7 +1601,7 @@
         // menu
         'menu.dashboard': '数据看板',
         'menu.streams':   '直播列表',
-        'menu.obs':       '推流配置',
+        'menu.obs':       '远端推流',
         'menu.telegram':  'TG 推送',
         'menu.site':      '网站设置',
         // loading / login
@@ -1498,6 +1623,9 @@
         'dash.export':      '⬇ 导出 CSV',
         'dash.exporting':   '导出中...',
         'dash.stream_detail': '直播统计明细',
+        'dash.per_page':      '每页',
+        'dash.rows_unit':     '条',
+        'dash.all':           '全部',
         // device labels
         'device.desktop': '桌面端',
         'device.mobile':  '移动端',
@@ -1573,7 +1701,11 @@
         'editor.add_title': '新增直播',
         'editor.edit_title':'编辑直播',
         // lang
-        'lang.btn_label': 'EN',
+        'lang.btn_label':    'EN',
+        'lang.toggle_title': '切换语言',
+        'toast.close':       '关闭',
+        'confirm.ok':        '确认',
+        'confirm.cancel':    '取消',
         // actions
         'action.disable': '停用',
         'action.enable':  '启用',
@@ -1626,7 +1758,7 @@
         'form.api_key_label': '密钥备注',
         'ph.api_key_label': '备注（可选）',
         'btn.create_api_key': '生成密钥',
-        'api.new_token_hint': '请复制并妥善保管——密钥不会再次显示',
+        'api.new_token_hint': '请复制并妥善保管 - 密钥不会再次显示',
         'api.copy':         '复制',
         'api.copied':       '已复制',
         'api.revoke':       '撤销',
@@ -1665,8 +1797,9 @@
         'ph.footer':        '支持标题、段落、列表和链接。留空则首页不显示页脚内容卡片。',
         'ph.obs_host':      '例如 live-rtmp.stdm.moe 或 live-rtmp.stdm.moe:1935',
         'ph.obs_playback':  '例如 https://live.example.com',
-        'ph.obs_route_key': '例如 my-live-001',
-        'ph.search':        '搜索直播名 / ID / 源地址',
+        'ph.obs_route_key':    '例如 my-live-001',
+        'ph.obs_route_search': '搜索推流码',
+        'ph.search':           '搜索直播名 / ID / 源地址',
         'ph.nav_label':     '菜单名',
         'ph.nav_url':       '#stream-list 或 https://example.com',
         'ph.link_name':     '视角名',
@@ -1678,7 +1811,7 @@
         'hint.pw_change':   '修改后台登录密码后，当前会话会自动退出。',
         'hint.tg_config':   '配置 Bot Token 和接收方 ID 后，可在检测到开播或关播时自动发送消息。',
         'hint.tg_vars':     '可用变量：{title}、{url}、{site_title}、{time}、{status}、{stream_id}、{public_id}、{link_name}、{source_url} &nbsp;·&nbsp; 支持 HTML',
-        'hint.obs_rtmp':    '推流端使用 RTMP 推流到 NAS，播放器使用 SRS 输出的 HLS 或 FLV 地址。',
+        'hint.obs_rtmp':    '推流端使用 RTMP 推流到服务器，播放器使用 SRS 输出的 HLS 或 FLV 地址。',
         'hint.obs_routes':  '新增自定义推流码后，系统会生成不可反推的公开 HLS/FLV 地址。推流端仍使用真实推流码推流。',
         'hint.links':       '填写格式：视角名称 | 类型 | 播放链接 | Key Override | ClearKey 信息',
         'hint.footer_example': '示例：## 联系方式\n- [项目主页](https://example.com)',
@@ -1777,12 +1910,59 @@
         'err.missing_id':                 '缺少 ID',
         'err.invalid_action':             '无效操作',
         'err.server_error':               '服务器内部错误',
+        'menu.push':                      '本地推流',
+        'kicker.push':                    'Local Push',
+        'section.push':                   '本地推流',
+        'btn.upload_video':               '上传视频',
+        'push.modal_title':               '开始推流',
+        'push.file':                      '文件',
+        'push.stream_key':                '推流码',
+        'push.loop':                      '循环播放',
+        'push.start':                     '开始推流',
+        'push.jobs_title':                '正在推流',
+        'push.no_files':                  '暂无视频文件',
+        'push.no_jobs':                   '暂无推流任务',
+        'push.stop':                      '停止',
+        'push.uploading':                 '上传中',
+        'push.upload_done':               '上传完成',
+        'err.invalid_filename':           '文件名非法',
+        'err.invalid_file_type':          '不支持的文件类型',
+        'err.file_not_found':             '文件不存在',
+        'err.push_already_running':       '该推流码已有任务正在运行',
+        'err.push_not_found':             '推流任务不存在',
+        'err.stream_key_required':        '请填写推流码',
+        'push.copy_rtmp':                 '复制推流地址',
+        'push.copy_hls':                  '复制播放地址',
+        'push.add_stream':                '添加直播',
+        'push.copied':                    '已复制',
+        'push.dir_empty':                 '此目录为空',
+        'push.publish_archive':           '发布归档',
+        'push.folder':                    '文件夹',
+        'push.edit_push':                 '编辑推流',
+        'push.job_title':                 '推流详情',
+        'push.live_label':                '直播中',
+        'push.elapsed':                   '已推流',
+        'push.search':                    '搜索文件...',
+        'push.no_results':                '无匹配文件',
+        'push.start_all':                 '全部开始',
+        'push.stop_all':                  '全部停止',
+        'push.folder_push':               '文件夹推流',
+        'push.stop':                      '停止',
+        'push.add_all_stream':            '全部添加直播',
+        'push.add_to_existing':           '添加到现有直播',
+        'push.add_to_existing_archive':   '添加到现有归档',
+        'push.pick_stream_title':         '选择直播',
+        'push.tab_all':                   '全部',
+        'push.picker_search':             '搜索...',
+        'push.picker_empty':              '没有匹配的直播',
+        'push.select':                    '选择',
+        'err.invalid_rel_path':           '路径非法',
       },
       en: {
         // kickers: en shows Chinese label (mirrored bilingual)
         'kicker.site_settings': '网站设置',
         'kicker.telegram':      'TG Bot 推送',
-        'kicker.obs':           '推流配置',
+        'kicker.obs':           '远端推流',
         'kicker.stream_records':'已录入的直播',
         'kicker.analytics':     '数据看板',
         'kicker.device':        '设备分布',
@@ -1792,7 +1972,7 @@
         // section headings
         'section.site_settings': 'Site Settings',
         'section.telegram':      'Telegram Bot',
-        'section.obs':           'Stream Setup',
+        'section.obs':           'Remote Push',
         'section.stream_records':'Stream Records',
         'section.analytics':     'Analytics',
         'section.device':        'Device Distribution',
@@ -1811,7 +1991,7 @@
         // menu
         'menu.dashboard': 'Dashboard',
         'menu.streams':   'Streams',
-        'menu.obs':       'Stream Setup',
+        'menu.obs':       'Remote Push',
         'menu.telegram':  'Telegram',
         'menu.site':      'Site Settings',
         // loading / login
@@ -1833,6 +2013,9 @@
         'dash.export':      '⬇ Export CSV',
         'dash.exporting':   'Exporting...',
         'dash.stream_detail': 'Stream Statistics',
+        'dash.per_page':      'Per page',
+        'dash.rows_unit':     'rows',
+        'dash.all':           'All',
         // device labels
         'device.desktop': 'Desktop',
         'device.mobile':  'Mobile',
@@ -1908,7 +2091,11 @@
         'editor.add_title': 'Add Stream',
         'editor.edit_title':'Edit Stream',
         // lang
-        'lang.btn_label': '中',
+        'lang.btn_label':    '中',
+        'lang.toggle_title': 'Switch Language',
+        'toast.close':       'Close',
+        'confirm.ok':        'Confirm',
+        'confirm.cancel':    'Cancel',
         // shared
         'status.loading': 'Loading...',
         // actions
@@ -1961,7 +2148,7 @@
         'form.api_key_label': 'Key label',
         'ph.api_key_label': 'Label (optional)',
         'btn.create_api_key': 'Generate key',
-        'api.new_token_hint': 'Copy and keep safe — this token will not be shown again',
+        'api.new_token_hint': 'Copy and keep safe - this token will not be shown again',
         'api.copy':         'Copy',
         'api.copied':       'Copied',
         'api.revoke':       'Revoke',
@@ -2000,8 +2187,9 @@
         'ph.footer':        'Supports headings, paragraphs, lists and links. Leave empty to hide footer.',
         'ph.obs_host':      'e.g. live-rtmp.stdm.moe or live-rtmp.stdm.moe:1935',
         'ph.obs_playback':  'e.g. https://live.example.com',
-        'ph.obs_route_key': 'e.g. my-live-001',
-        'ph.search':        'Search by name / ID / URL',
+        'ph.obs_route_key':    'e.g. my-live-001',
+        'ph.obs_route_search': 'Search stream key',
+        'ph.search':           'Search by name / ID / URL',
         'ph.nav_label':     'Label',
         'ph.nav_url':       '#stream-list or https://example.com',
         'ph.link_name':     'Source name',
@@ -2013,7 +2201,7 @@
         'hint.pw_change':   'Changing the admin password will log you out of the current session.',
         'hint.tg_config':   'Configure Bot Token and recipient ID to send notifications on stream start/stop.',
         'hint.tg_vars':     'Variables: {title}, {url}, {site_title}, {time}, {status}, {stream_id}, {public_id}, {link_name}, {source_url} &nbsp;·&nbsp; HTML supported',
-        'hint.obs_rtmp':    'The encoder pushes via RTMP to NAS; the player uses HLS or FLV from SRS.',
+        'hint.obs_rtmp':    'The encoder pushes via RTMP to the server; the player uses HLS or FLV from SRS.',
         'hint.obs_routes':  'Adding a custom stream key generates a public HLS/FLV URL that cannot be reverse-engineered.',
         'hint.links':       'Format: name | type | URL | Key Override | ClearKey',
         'hint.footer_example': 'Example: ## Contact\n- [Project page](https://example.com)',
@@ -2112,6 +2300,53 @@
         'err.missing_id':                 'Missing ID',
         'err.invalid_action':             'Invalid action',
         'err.server_error':               'Internal server error',
+        'menu.push':                      'Local Push',
+        'kicker.push':                    '本地推流',
+        'section.push':                   'Local Push',
+        'btn.upload_video':               'Upload Video',
+        'push.modal_title':               'Start Push',
+        'push.file':                      'File',
+        'push.stream_key':                'Stream Key',
+        'push.loop':                      'Loop',
+        'push.start':                     'Start Push',
+        'push.jobs_title':                'Active Pushes',
+        'push.no_files':                  'No video files',
+        'push.no_jobs':                   'No active push jobs',
+        'push.stop':                      'Stop',
+        'push.uploading':                 'Uploading',
+        'push.upload_done':               'Upload complete',
+        'err.invalid_filename':           'Invalid filename',
+        'err.invalid_file_type':          'Unsupported file type',
+        'err.file_not_found':             'File not found',
+        'err.push_already_running':       'Push already running for this stream key',
+        'err.push_not_found':             'Push job not found',
+        'err.stream_key_required':        'Stream key is required',
+        'push.copy_rtmp':                 'Copy RTMP URL',
+        'push.copy_hls':                  'Copy HLS URL',
+        'push.add_stream':                'Add Stream',
+        'push.copied':                    'Copied',
+        'push.dir_empty':                 'Directory is empty',
+        'push.publish_archive':           'Publish to Archive',
+        'push.folder':                    'Folder',
+        'push.edit_push':                 'Edit Push',
+        'push.job_title':                 'Push Details',
+        'push.live_label':                'Live',
+        'push.elapsed':                   'Elapsed',
+        'push.search':                    'Search files...',
+        'push.no_results':                'No matching files',
+        'push.start_all':                 'Start All',
+        'push.stop_all':                  'Stop All',
+        'push.folder_push':               'Folder Push',
+        'push.stop':                      'Stop',
+        'push.add_all_stream':            'Add All Streams',
+        'push.add_to_existing':           'Add to Existing',
+        'push.add_to_existing_archive':   'Add to Existing Archive',
+        'push.pick_stream_title':         'Pick a Stream',
+        'push.tab_all':                   'All',
+        'push.picker_search':             'Search...',
+        'push.picker_empty':              'No matching streams',
+        'push.select':                    'Select',
+        'err.invalid_rel_path':           'Invalid path',
       }
     };
 
@@ -2148,6 +2383,44 @@
     // Callbacks registered by different script blocks that need to re-render
     // when the language changes (e.g. sort tab labels, per-language form fields).
     // Each hook is wrapped in try/catch so a failure in one does not block others.
+    function showToast(msg, type, duration) {
+      if (type === undefined) type = 'info';
+      if (duration === undefined) duration = 3500;
+      var wrap = document.getElementById('sh-toast-wrap');
+      if (!wrap) { alert(msg); return; }
+      var icons = {success:'✓', error:'✕', info:'ℹ', warn:'⚠'};
+      var el = document.createElement('div');
+      el.className = 'sh-toast';
+      el.dataset.type = type;
+      el.innerHTML = '<span class="sh-toast-icon">' + (icons[type] || icons.info) + '</span>'
+        + '<span class="sh-toast-msg">' + String(msg).replace(/[&<>]/g, function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]);}) + '</span>'
+        + '<button class="sh-toast-close" aria-label="' + t('toast.close') + '">✕</button>';
+      var tid;
+      function dismiss(e) {
+        clearTimeout(tid);
+        e.classList.add('leaving');
+        e.addEventListener('animationend', function(){ e.remove(); }, {once:true});
+      }
+      el.querySelector('.sh-toast-close').addEventListener('click', function(){ dismiss(el); });
+      wrap.appendChild(el);
+      tid = setTimeout(function(){ dismiss(el); }, duration);
+    }
+
+    function showConfirm(msg, onOk) {
+      var modal = document.getElementById('sh-confirm-modal');
+      if (!modal) { if (confirm(msg)) onOk(); return; }
+      document.getElementById('sh-confirm-msg').textContent = msg;
+      modal.classList.remove('hidden');
+      function close() { modal.classList.add('hidden'); }
+      var okBtn = document.getElementById('sh-confirm-ok');
+      var caBtn = document.getElementById('sh-confirm-cancel');
+      var _ok = okBtn.cloneNode(true); okBtn.replaceWith(_ok);
+      var _ca = caBtn.cloneNode(true); caBtn.replaceWith(_ca);
+      _ok.addEventListener('click', function() { close(); onOk(); }, {once:true});
+      _ca.addEventListener('click', close, {once:true});
+      modal.addEventListener('click', function(e) { if (e.target === modal) close(); }, {once:true});
+    }
+
     var _langChangeHooks = [];
     function setLang(lang) {
       LANG = lang;
@@ -2197,6 +2470,8 @@
       applyI18n();
       _langChangeHooks.push(() => {
         if (allStreams.length) renderList();
+        if (obsRoutes.length) renderObsRoutes();
+        renderApiKeys(apiKeysData);
         applyTheme(document.documentElement.dataset.theme || 'light');
         const heroDesc = document.getElementById('admin-hero-desc');
         if (heroDesc) {
@@ -2333,6 +2608,9 @@
       let allStreams = [];
       let streamStats = {};
       let obsRoutes = [];
+      let obsRoutePage = 0;
+      let obsRoutePageSize = 5;
+      let obsRouteSearch = '';
       let isSavedProbeRunning = false;
       const savedProbeCache = new Map();
       const linkProbeTimers = new WeakMap();
@@ -2542,6 +2820,7 @@
         loadSiteSettings();
         loadApiKeys();
         loadTelegramSettings();
+        loadObsConfig();
         loadObsRoutes();
         loadStreams();
         const view = (location.hash || '').replace(/^#/, '') || localStorage.getItem('admin_active_view') || 'dashboard';
@@ -2729,22 +3008,25 @@
           </div>`;
         }).join('');
         els.apiKeysList.querySelectorAll('[data-key-id]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            if (!confirm(t('api.confirm_revoke'))) return;
-            try {
-              await apiCall('delete_api_key', { id: Number(btn.dataset.keyId) });
-              loadApiKeys();
-            } catch (err) {
-              showStatus(els.apiKeysStatus, err.message, true);
-            }
+          btn.addEventListener('click', function() {
+            showConfirm(t('api.confirm_revoke'), async function() {
+              try {
+                await apiCall('delete_api_key', { id: Number(btn.dataset.keyId) });
+                loadApiKeys();
+              } catch (err) {
+                showStatus(els.apiKeysStatus, err.message, true);
+              }
+            });
           });
         });
       };
 
+      let apiKeysData = [];
       const loadApiKeys = async () => {
         try {
           const res = await apiCall('list_api_keys');
-          renderApiKeys(res.data || []);
+          apiKeysData = res.data || [];
+          renderApiKeys(apiKeysData);
         } catch (err) {
           showStatus(els.apiKeysStatus, err.message, true);
         }
@@ -2858,18 +3140,18 @@
 
       const normalizeHost = (value = '') => {
         const raw = String(value || '').trim();
-        if (!raw) return (window.location.hostname || 'NAS-IP') + ':1935';
+        if (!raw) return (window.location.hostname || 'server-ip') + ':1935';
         try {
           return new URL(raw.includes('://') ? raw : `http://${raw}`).host || raw;
         } catch (e) {
-          return raw.replace(/^https?:\/\//i, '').split('/')[0] || window.location.hostname || 'NAS-IP';
+          return raw.replace(/^https?:\/\//i, '').split('/')[0] || window.location.hostname || 'server-ip';
         }
       };
 
       const normalizeOrigin = (value = '') => {
         const raw = String(value || '').trim().replace(/\/+$/, '');
         if (!raw) {
-          const host = window.location.hostname || 'NAS-IP';
+          const host = window.location.hostname || 'server-ip';
           return `${window.location.protocol || 'http:'}//${host}:18088`;
         }
         try {
@@ -2905,12 +3187,20 @@
 
       const renderObsRoutes = () => {
         if (!els.obsRouteList) return;
-        if (!obsRoutes.length) {
+        const q = obsRouteSearch.toLowerCase();
+        const filtered = q ? obsRoutes.filter(r => r.stream_key.toLowerCase().includes(q)) : obsRoutes;
+        if (!filtered.length) {
           els.obsRouteList.innerHTML = `<p class="hint">${t('msg.no_routes')}</p>`;
+          _updateObsRoutesPag(0, 1);
           return;
         }
+        const total = filtered.length;
+        const ps = obsRoutePageSize === 0 ? total : obsRoutePageSize;
+        const totalPages = Math.max(1, Math.ceil(total / ps));
+        if (obsRoutePage >= totalPages) obsRoutePage = totalPages - 1;
+        const pageRoutes = filtered.slice(obsRoutePage * ps, obsRoutePage * ps + ps);
         els.obsRouteList.innerHTML = '';
-        obsRoutes.forEach(route => {
+        pageRoutes.forEach(route => {
           const urls = obsRouteUrls(route);
           const card = document.createElement('div');
           card.className = 'obs-route-card';
@@ -2937,6 +3227,36 @@
           `;
           els.obsRouteList.appendChild(card);
         });
+        _updateObsRoutesPag(total, totalPages);
+      };
+
+      function _updateObsRoutesPag(total, totalPages) {
+        const pag = document.getElementById('obs-route-pag');
+        if (!pag) return;
+        pag.style.display = total > 0 ? 'flex' : 'none';
+        if (total === 0) return;
+        const ps = obsRoutePageSize === 0 ? total : obsRoutePageSize;
+        const start = obsRoutePage * ps + 1;
+        const end = Math.min((obsRoutePage + 1) * ps, total);
+        const info = document.getElementById('or-pag-info');
+        if (info) info.textContent = `${start}-${end} / ${total}`;
+        const prev = document.getElementById('or-prev');
+        const next = document.getElementById('or-next');
+        if (prev) prev.disabled = obsRoutePage === 0;
+        if (next) next.disabled = obsRoutePage >= totalPages - 1;
+      }
+
+      const loadObsConfig = async () => {
+        try {
+          const res = await apiCall('get_obs_config');
+          const rtmp = res.obs_rtmp_host || '';
+          const origin = res.obs_playback_origin || '';
+          els.obsRtmpHost.value = rtmp;
+          els.obsPlaybackOrigin.value = origin;
+          localStorage.setItem('obs_rtmp_host', rtmp);
+          localStorage.setItem('obs_playback_origin', origin);
+          refreshObsUrls();
+        } catch (e) {}
       };
 
       const loadObsRoutes = async () => {
@@ -2998,7 +3318,7 @@
           startStatsLive();
           window.setTimeout(checkSavedStreams, 100);
         } catch (e) {
-          alert(e.message);
+          showToast(e.message, 'error');
         }
       };
 
@@ -3069,16 +3389,22 @@
         els.list.innerHTML = '';
         const displayStreams = currentStreamList();
         const total = displayStreams.length;
+        const labelTotal = allStreams.filter(s => {
+          const lbl = String(s.stream_label || 'LIVE').toUpperCase();
+          if (streamLabelFilter === 'live') return lbl !== 'ARCHIVE';
+          if (streamLabelFilter === 'archive') return lbl === 'ARCHIVE';
+          return true;
+        }).length;
         const totalPages = Math.max(1, Math.ceil(total / pageSize));
         currentPage = Math.min(Math.max(1, currentPage), totalPages);
         const start = (currentPage - 1) * pageSize;
         const pageStreams = displayStreams.slice(start, start + pageSize);
-        els.streamCount.textContent = t('streams.showing').replace('{shown}', total).replace('{total}', allStreams.length);
+        els.streamCount.textContent = t('streams.showing').replace('{shown}', pageStreams.length).replace('{total}', labelTotal);
         els.pageInfo.textContent = t('page.page_of').replace('{cur}', currentPage).replace('{total}', totalPages);
         els.prevPage.disabled = currentPage <= 1;
         els.nextPage.disabled = currentPage >= totalPages;
         if (!pageStreams.length) {
-          els.streamCount.textContent = t('streams.showing').replace('{shown}', 0).replace('{total}', allStreams.length);
+          els.streamCount.textContent = t('streams.showing').replace('{shown}', 0).replace('{total}', labelTotal);
           els.list.innerHTML = `<p class="hint">${t('streams.no_match')}</p>`;
           return;
         }
@@ -3192,17 +3518,17 @@
         if (!id) return;
 
         if (e.target.classList.contains('del-btn')) {
-          if (confirm(t('confirm.delete'))) {
+          showConfirm(t('confirm.delete'), async function() {
             await apiCall('delete', { id });
             loadStreams();
-          }
+          });
         }
         if (e.target.classList.contains('copy-btn')) {
           const publicId = e.target.dataset.publicId || id;
           const url = `${window.location.origin}/player.html?id=${encodeURIComponent(publicId)}`;
           await copyText(url);
           e.target.closest('.action-menu')?.removeAttribute('open');
-          alert(t('alert.link_copied'));
+          showToast(t('alert.link_copied'), 'success');
         }
         if (e.target.classList.contains('open-btn')) {
           window.open(e.target.dataset.url, '_blank', 'noopener');
@@ -3227,7 +3553,7 @@
               checkSingleSavedStream(stream, true);
             }
           } catch (err) {
-            alert(err.message);
+            showToast(err.message, 'error');
           }
         }
         if (e.target.classList.contains('tg-toggle-btn')) {
@@ -3239,7 +3565,7 @@
             renderList();
             window.setTimeout(checkSavedStreams, 100);
           } catch (err) {
-            alert(err.message);
+            showToast(err.message, 'error');
           }
         }
         if (e.target.classList.contains('edit-btn')) {
@@ -3299,7 +3625,7 @@
                 if (s) s.sort_order = idx;
               });
             } catch (err) {
-              alert(t('msg.sort_err') + '：' + err.message);
+              showToast(t('msg.sort_err') + '：' + err.message, 'error');
               renderList();
             }
           });
@@ -3352,14 +3678,19 @@
           closeEditorModal();
           loadStreams();
         } catch (e) {
-          alert(e.message);
+          showToast(e.message, 'error');
         }
       });
+
+      let _linkDragSrc = null;
+      let _linkDragFromHandle = false;
 
       const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '') => {
         const div = document.createElement('div');
         div.className = 'link-row';
+        div.draggable = true;
         div.innerHTML = `
+          <span class="drag-handle" draggable="false" style="margin-top:6px;">⠿</span>
           <input class="l-name" placeholder="${t('ph.link_name')}" value="${escapeAttr(name)}">
           <select class="l-type">
             <option value="" ${type === '' ? 'selected' : ''}>${t('type.auto')}</option>
@@ -3380,6 +3711,36 @@
         div.querySelector('.l-url').addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
         div.querySelector('.l-type').addEventListener('change', () => scheduleLinkRowCheck(div, 0));
         if (url) scheduleLinkRowCheck(div, 250);
+        div.querySelector('.drag-handle').addEventListener('mousedown', () => { _linkDragFromHandle = true; });
+        div.addEventListener('dragstart', e => {
+          if (!_linkDragFromHandle) { e.preventDefault(); return; }
+          _linkDragSrc = div;
+          div.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        div.addEventListener('dragend', () => {
+          _linkDragFromHandle = false;
+          div.classList.remove('dragging');
+          els.linksContainer.querySelectorAll('.link-row').forEach(r => r.classList.remove('drag-over'));
+          _linkDragSrc = null;
+        });
+        div.addEventListener('dragover', e => {
+          e.preventDefault();
+          if (div !== _linkDragSrc) {
+            els.linksContainer.querySelectorAll('.link-row').forEach(r => r.classList.remove('drag-over'));
+            div.classList.add('drag-over');
+          }
+        });
+        div.addEventListener('drop', e => {
+          e.preventDefault();
+          if (!_linkDragSrc || _linkDragSrc === div) return;
+          const container = els.linksContainer;
+          const srcIdx = [...container.children].indexOf(_linkDragSrc);
+          const dstIdx = [...container.children].indexOf(div);
+          if (srcIdx < dstIdx) container.insertBefore(_linkDragSrc, div.nextSibling);
+          else container.insertBefore(_linkDragSrc, div);
+          div.classList.remove('drag-over');
+        });
       };
 
       document.getElementById('add-link-btn').onclick = () => addLinkUI();
@@ -3390,11 +3751,40 @@
       const _savedRtmpHost = localStorage.getItem('obs_rtmp_host');
       els.obsRtmpHost.value = _savedRtmpHost !== null ? _savedRtmpHost : (localStorage.getItem('obs_public_host') || '');
       els.obsPlaybackOrigin.value = localStorage.getItem('obs_playback_origin') || '';
-      els.obsRtmpHost.placeholder = (window.location.hostname || 'NAS-IP') + ':1935';
-      els.obsPlaybackOrigin.placeholder = `${window.location.protocol || 'http:'}//${window.location.hostname || 'NAS-IP'}:18088`;
+      els.obsRtmpHost.placeholder = (window.location.hostname || 'server-ip') + ':1935';
+      els.obsPlaybackOrigin.placeholder = `${window.location.protocol || 'http:'}//${window.location.hostname || 'server-ip'}:18088`;
       els.obsRtmpHost.addEventListener('input', refreshObsUrls);
       els.obsPlaybackOrigin.addEventListener('input', refreshObsUrls);
       els.obsStreamKey.addEventListener('input', refreshObsUrls);
+      document.getElementById('obs-route-search')?.addEventListener('input', function(e) {
+        obsRouteSearch = e.target.value.trim();
+        obsRoutePage = 0;
+        renderObsRoutes();
+      });
+      document.getElementById('or-page-size')?.addEventListener('change', function(e) {
+        obsRoutePageSize = parseInt(e.target.value);
+        obsRoutePage = 0;
+        renderObsRoutes();
+      });
+      document.getElementById('or-prev')?.addEventListener('click', function() {
+        if (obsRoutePage > 0) { obsRoutePage--; renderObsRoutes(); }
+      });
+      document.getElementById('or-next')?.addEventListener('click', function() {
+        const q = obsRouteSearch.toLowerCase();
+        const filtered = q ? obsRoutes.filter(function(r){ return r.stream_key.toLowerCase().includes(q); }) : obsRoutes;
+        const total = filtered.length;
+        const ps = obsRoutePageSize === 0 ? total : obsRoutePageSize;
+        const totalPages = Math.max(1, Math.ceil(total / ps));
+        if (obsRoutePage < totalPages - 1) { obsRoutePage++; renderObsRoutes(); }
+      });
+      const saveObsConfig = () => {
+        apiCall('save_obs_config', {
+          obs_rtmp_host: els.obsRtmpHost.value.trim(),
+          obs_playback_origin: els.obsPlaybackOrigin.value.trim(),
+        }).catch(() => {});
+      };
+      els.obsRtmpHost.addEventListener('change', saveObsConfig);
+      els.obsPlaybackOrigin.addEventListener('change', saveObsConfig);
       document.querySelectorAll('.obs-copy-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           const target = document.getElementById(btn.dataset.copyTarget);
@@ -3432,14 +3822,16 @@
           showStatus(els.obsStatus, t('obs.filled_in').replace('{name}', name));
         }
         if (e.target.classList.contains('obs-route-delete-btn')) {
-          if (!confirm(t('confirm.delete_route'))) return;
-          try {
-            await apiCall('delete_obs_route', { id: e.target.dataset.id });
-            await loadObsRoutes();
-            showStatus(els.obsStatus, t('msg.route_deleted'));
-          } catch (err) {
-            showStatus(els.obsStatus, err.message, true);
-          }
+          const _id = e.target.dataset.id;
+          showConfirm(t('confirm.delete_route'), async function() {
+            try {
+              await apiCall('delete_obs_route', { id: _id });
+              await loadObsRoutes();
+              showStatus(els.obsStatus, t('msg.route_deleted'));
+            } catch (err) {
+              showStatus(els.obsStatus, err.message, true);
+            }
+          });
         }
       });
       document.getElementById('use-obs-hls-btn').addEventListener('click', () => appendObsLink('hls'));
@@ -3484,13 +3876,38 @@
         resetForm();
       }
 
-      document.getElementById('editor-modal').addEventListener('click', e => {
-        if (e.target === e.currentTarget) closeEditorModal();
-      });
+      { const _em = document.getElementById('editor-modal'); let _md = false;
+        _em.addEventListener('mousedown', e => { _md = e.target === _em; });
+        _em.addEventListener('click', e => { if (_md && e.target === _em) closeEditorModal(); }); }
       document.getElementById('editor-modal-close').addEventListener('click', closeEditorModal);
 
       refreshObsUrls();
       resetForm();
+      window._sh_openStreamEditor = (data) => {
+        const label = data.label || activeRecordsLabel;
+        openEditorModal(null, label);
+        if (data.name) els.nameInput.value = data.name;
+        if (data.links && data.links.length) {
+          els.linksContainer.innerHTML = '';
+          data.links.forEach(link => addLinkUI(link.name, link.url, '', '', link.type || ''));
+        } else if (data.hls_url) {
+          els.linksContainer.innerHTML = '';
+          addLinkUI('Default', data.hls_url, '', '', data.link_type ?? 'hls');
+        }
+      };
+      window._sh_obsUrls = () => ({
+        rtmpHost: normalizeHost(els.obsRtmpHost.value),
+        hlsOrigin: normalizeOrigin(els.obsPlaybackOrigin.value),
+      });
+      window._sh_allStreams = () => allStreams;
+      window._sh_openEditorForStream = (streamId, newLinks, newName) => {
+        const stream = allStreams.find(s => String(s.id) === String(streamId));
+        if (!stream) return;
+        openEditorModal(stream);
+        if (newName) els.nameInput.value = newName;
+        els.linksContainer.innerHTML = '';
+        newLinks.forEach(l => addLinkUI(l.name || '', l.url || '', '', '', l.type || ''));
+      };
     });
   </script>
 
@@ -3628,6 +4045,130 @@
     </div>
   </div>
 
+  <!-- Video push modal -->
+  <div id="push-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="width:min(100%,clamp(340px,38vw,580px))">
+      <div class="modal-head">
+        <h3 style="margin:0;font-size:1rem;font-weight:900;" data-i18n="push.modal_title">开始推流</h3>
+        <button type="button" id="push-modal-close" class="modal-close-btn">&#x2715;</button>
+      </div>
+      <div style="padding:20px 24px 24px;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:flex;align-items:center;gap:12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 14px;">
+          <span id="push-modal-file-icon" style="font-size:1.25em;flex-shrink:0;opacity:.65;">&#127916;</span>
+          <div style="min-width:0;flex:1;">
+            <div id="push-modal-type-label" style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;" data-i18n="push.file">文件</div>
+            <div id="push-modal-filename" style="font-family:monospace;font-size:.87em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;font-weight:600;"></div>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:7px;" data-i18n="push.stream_key">推流码</label>
+          <div style="position:relative;">
+            <input type="text" id="push-stream-key-input" placeholder="stream-key" style="width:100%;box-sizing:border-box;padding-right:38px;">
+            <button type="button" id="push-random-key-btn" title="随机生成推流码" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1em;padding:0;line-height:1;opacity:.6;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.6'">&#x1F3B2;</button>
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 14px;user-select:none;">
+          <input type="checkbox" id="push-loop-check" style="width:15px;height:15px;flex-shrink:0;cursor:pointer;">
+          <span style="font-size:.9em;" data-i18n="push.loop">循环播放</span>
+        </label>
+        <div style="display:flex;justify-content:flex-end;padding-top:2px;">
+          <button type="button" id="push-start-btn" class="btn-primary" data-i18n="push.start">开始推流</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="push-job-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="width:min(100%,clamp(340px,38vw,540px))">
+      <div class="modal-head">
+        <h3 style="margin:0;font-size:1rem;font-weight:900;" data-i18n="push.job_title">推流详情</h3>
+        <button type="button" id="push-job-modal-close" class="modal-close-btn">&#x2715;</button>
+      </div>
+      <div style="padding:20px 24px 24px;display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;align-items:center;gap:12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 14px;">
+          <span id="push-job-icon" style="font-size:1.25em;flex-shrink:0;opacity:.65;">&#127916;</span>
+          <div style="min-width:0;flex:1;">
+            <div id="push-job-type-label" style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;"></div>
+            <div id="push-job-name" style="font-family:monospace;font-size:.87em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;font-weight:600;"></div>
+          </div>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 7px;border-radius:999px;background:rgba(22,163,74,.12);border:1px solid rgba(22,163,74,.35);font-size:.72rem;font-weight:800;color:#16a34a;white-space:nowrap;flex-shrink:0;">
+            <span class="live-dot" style="color:#16a34a;"></span>
+            <span data-i18n="push.live_label">直播中</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:0;">
+            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;" data-i18n="push.stream_key">推流码</div>
+            <div id="push-job-key" style="font-family:monospace;font-size:.87em;font-weight:600;word-break:break-all;"></div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:88px;">
+            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;" data-i18n="push.elapsed">已推流</div>
+            <div id="push-job-elapsed" style="font-size:.9em;font-weight:700;font-variant-numeric:tabular-nums;"></div>
+          </div>
+        </div>
+        <div id="push-job-loop-row" style="display:none;align-items:center;gap:8px;font-size:.85em;color:var(--muted);">
+          <span>&#8635;</span><span data-i18n="push.loop">循环播放</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" id="push-job-copy-rtmp" class="btn-secondary" style="flex:1;min-width:110px;font-size:.82em;" data-i18n="push.copy_rtmp">复制推流地址</button>
+          <button type="button" id="push-job-copy-hls"  class="btn-secondary" style="flex:1;min-width:110px;font-size:.82em;" data-i18n="push.copy_hls">复制播放地址</button>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div style="display:flex;flex:1;gap:0;">
+            <button type="button" id="push-job-add-stream" class="btn-secondary" style="flex:1;font-size:.82em;border-radius:6px 0 0 6px;" data-i18n="push.add_stream">添加直播</button>
+            <button type="button" id="push-job-add-stream-existing" class="btn-secondary" style="padding:6px 8px;font-size:.82em;border-left:1px solid rgba(255,255,255,.15);border-radius:0 6px 6px 0;">&#9662;</button>
+          </div>
+          <button type="button" id="push-job-stop"       class="btn-danger"    style="flex:1;font-size:.82em;" data-i18n="push.stop">停止推流</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="folder-push-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="width:min(100%,clamp(400px,48vw,660px));max-height:80vh;display:flex;flex-direction:column;">
+      <div class="modal-head">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+          <span style="font-size:1.2em;flex-shrink:0;">&#128193;</span>
+          <span id="folder-push-modal-name" style="font-weight:700;font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        </div>
+        <button type="button" id="folder-push-modal-close" class="modal-close-btn">&#x2715;</button>
+      </div>
+      <div id="folder-push-file-list" style="overflow-y:auto;padding:12px 20px;flex:1;display:flex;flex-direction:column;gap:6px;min-height:60px;">
+      </div>
+      <div style="padding:12px 20px 20px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label id="folder-push-loop-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:120px;">
+          <input type="checkbox" id="folder-push-loop-check" style="width:15px;height:15px;cursor:pointer;">
+          <span style="font-size:.9em;" data-i18n="push.loop">循环播放</span>
+        </label>
+        <div style="display:none;align-items:center;gap:2px;" id="folder-push-add-all-group">
+          <button type="button" id="folder-push-add-all-btn" class="btn-secondary" style="font-size:.85em;padding:6px 12px;border-radius:6px 0 0 6px;" data-i18n="push.add_all_stream">全部添加直播</button>
+          <button type="button" id="folder-push-add-all-existing-btn" class="btn-secondary" style="font-size:.85em;padding:6px 5px;border-left:1px solid rgba(255,255,255,.15);border-radius:0 6px 6px 0;" title="添加到现有直播">&#9662;</button>
+        </div>
+        <button type="button" id="folder-push-start-all-btn" class="btn-primary" style="font-size:.85em;padding:6px 12px;" data-mode="start">全部开始</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stream Picker Modal -->
+  <div id="stream-picker-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width:480px;width:94vw;display:flex;flex-direction:column;max-height:85vh;">
+      <div class="modal-head">
+        <h3 style="margin:0;font-size:1.05rem;font-weight:900;" data-i18n="push.pick_stream_title">选择直播</h3>
+        <button type="button" id="stream-picker-close" class="modal-close-btn">&#x2715;</button>
+      </div>
+      <div style="padding:12px 20px 0;">
+        <input type="text" id="stream-picker-search" data-i18n="push.picker_search" style="width:100%;box-sizing:border-box;padding:7px 10px;font-size:.9em;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div style="padding:8px 20px 0;display:flex;gap:6px;">
+        <button type="button" class="stream-picker-tab" data-tab="all" style="font-size:.82em;padding:4px 12px;border-radius:20px;border:1px solid var(--line);cursor:pointer;background:var(--accent);color:#fff;" data-i18n="push.tab_all">全部</button>
+        <button type="button" class="stream-picker-tab" data-tab="LIVE" style="font-size:.82em;padding:4px 12px;border-radius:20px;border:1px solid var(--line);cursor:pointer;background:var(--bg);color:var(--text);">LIVE</button>
+        <button type="button" class="stream-picker-tab" data-tab="ARCHIVE" style="font-size:.82em;padding:4px 12px;border-radius:20px;border:1px solid var(--line);cursor:pointer;background:var(--bg);color:var(--text);">ARCHIVE</button>
+      </div>
+      <div id="stream-picker-list" style="overflow-y:auto;flex:1;padding:8px 20px;min-height:80px;"></div>
+      <div id="stream-picker-pagination" style="padding:8px 20px 16px;display:none;align-items:center;gap:8px;justify-content:center;border-top:1px solid var(--line);"></div>
+    </div>
+  </div>
+
   <script>
     // Dashboard & Stream Stats
     // This is a separate <script> block from the main app block above.
@@ -3738,7 +4279,7 @@
           try {
             const d = JSON.parse(e.data);
             renderDashOverview(d.overview);
-            renderDashStreams(d.streams);
+            renderDashStreams(d.streams, dashStreamsData.length > 0);
             setDashLiveIndicator('live');
             if (!dashGeoInitDone) { dashGeoInitDone = true; renderGeoSection('dash-geo-map', 'dash-geo-list', 'dash-geo-range', null); }
           } catch (err) { console.warn('Dashboard SSE error', err); }
@@ -3797,6 +4338,8 @@
       let dashStreamsSortCol = 'last_seen_at';
       let dashStreamsSortDir = 'desc';
       let dashStreamsData = [];
+      let dashStreamsPage = 0;
+      let dashStreamsPageSize = 5;
 
       function sortDashStreams(data) {
         const col = dashStreamsSortCol;
@@ -3816,19 +4359,27 @@
         });
       }
 
-      function renderDashStreams(rows) {
+      function renderDashStreams(rows, keepPage) {
         dashStreamsData = rows || [];
+        if (!keepPage) dashStreamsPage = 0;
         const tbody = document.getElementById('dash-streams-tbody');
         if (!tbody) return;
         if (!dashStreamsData.length) {
           tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">${t('table.no_data')}</td></tr>`;
           updateDashStreamHeaders();
+          _updateDashStreamsPag(0, 1);
           return;
         }
         const sorted = sortDashStreams(dashStreamsData);
-        const maxTotal = Math.max(...sorted.map(r => r.total_views), 1);
+        const total = sorted.length;
+        const ps = dashStreamsPageSize === 0 ? total : dashStreamsPageSize;
+        const totalPages = Math.max(1, Math.ceil(total / ps));
+        if (dashStreamsPage >= totalPages) dashStreamsPage = totalPages - 1;
+        const start = dashStreamsPage * ps;
+        const pageRows = sorted.slice(start, start + ps);
+        const maxTotal = Math.max(...pageRows.map(r => r.total_views), 1);
         const esc2 = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-        tbody.innerHTML = sorted.map(r => {
+        tbody.innerHTML = pageRows.map(r => {
           const barPct = Math.round(r.total_views / maxTotal * 100);
           const devTotal = r.mobile + r.tablet + r.desktop || 0;
           let devHtml = devTotal > 0
@@ -3849,6 +4400,23 @@
           </tr>`;
         }).join('');
         updateDashStreamHeaders();
+        _updateDashStreamsPag(total, totalPages);
+      }
+
+      function _updateDashStreamsPag(total, totalPages) {
+        const pag = document.getElementById('dash-streams-pag');
+        if (!pag) return;
+        pag.style.display = total > 0 ? 'flex' : 'none';
+        if (total === 0) return;
+        const ps = dashStreamsPageSize === 0 ? total : dashStreamsPageSize;
+        const start = dashStreamsPage * ps + 1;
+        const end = Math.min((dashStreamsPage + 1) * ps, total);
+        const info = document.getElementById('ds-pag-info');
+        if (info) info.textContent = `${start}-${end} / ${total}`;
+        const prev = document.getElementById('ds-prev');
+        const next = document.getElementById('ds-next');
+        if (prev) prev.disabled = dashStreamsPage === 0;
+        if (next) next.disabled = dashStreamsPage >= totalPages - 1;
       }
 
       document.querySelector('.dash-table')?.addEventListener('click', e => {
@@ -4154,7 +4722,7 @@
             const a = document.createElement('a'); a.href = url;
             a.download = `viewer_stats_${new Date().toISOString().slice(0,10)}.csv`;
             a.click(); URL.revokeObjectURL(url);
-          } catch (e) { alert(e.message); }
+          } catch (e) { showToast(e.message, 'error'); }
           finally { btn.disabled = false; btn.textContent = t('dash.export'); }
         });
 
@@ -4179,6 +4747,21 @@
           const td = e.target.closest('.dash-td-name-link');
           if (!td) return;
           openStreamStatModal(td.dataset.id, td.dataset.name || '');
+        });
+
+        // Dashboard table pagination
+        document.getElementById('ds-page-size')?.addEventListener('change', e => {
+          dashStreamsPageSize = parseInt(e.target.value);
+          renderDashStreams(dashStreamsData, false);
+        });
+        document.getElementById('ds-prev')?.addEventListener('click', () => {
+          if (dashStreamsPage > 0) { dashStreamsPage--; renderDashStreams(dashStreamsData, true); }
+        });
+        document.getElementById('ds-next')?.addEventListener('click', () => {
+          const total = dashStreamsData.length;
+          const ps = dashStreamsPageSize === 0 ? total : dashStreamsPageSize;
+          const totalPages = Math.max(1, Math.ceil(total / ps));
+          if (dashStreamsPage < totalPages - 1) { dashStreamsPage++; renderDashStreams(dashStreamsData, true); }
         });
 
         // stream-stat-btn delegation
@@ -4223,6 +4806,991 @@
       });
     })();
   </script>
+
+  <script>
+    // Video Push section
+    (() => {
+      const _esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+      const fmtBytes = b => {
+        if (b < 1024) return b + ' B';
+        if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+        if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+        return (b / 1073741824).toFixed(2) + ' GB';
+      };
+      const fmtSecs = s => {
+        s = Math.round(s);
+        if (s < 60) return s + 's';
+        if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+        return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+      };
+
+      const pushFetch = async (action, body) => {
+        const method = body ? 'POST' : 'GET';
+        const opts = { method };
+        if (body) { opts.headers = {'Content-Type': 'application/json'}; opts.body = JSON.stringify(body); }
+        const res = await fetch(`/api?action=${encodeURIComponent(action)}&_t=${Date.now()}`, opts);
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') {
+          const base = data.code ? (t('err.' + data.code) || data.code) : (data.message || 'Error');
+          const detail = data.detail ? ` (${data.detail})` : '';
+          throw new Error(base + detail);
+        }
+        return data;
+      };
+
+      const _handleFolderPublish = async (dirIndex, folderRelPath, folderName) => {
+        let url = `/api?action=list_folder_videos&dir_index=${encodeURIComponent(dirIndex)}&_t=${Date.now()}`;
+        if (folderRelPath) url += `&rel_path=${encodeURIComponent(folderRelPath)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') throw new Error(data.code || 'Error');
+        const files = data.files || [];
+        if (!files.length) { showToast(t('push.no_results'), 'info'); return; }
+        const links = files.map(f => ({name: f.name.replace(/\.[^.]+$/, ''), url: f.video_url, type: ''}));
+        window._sh_openStreamEditor({name: folderName, links, label: 'ARCHIVE'});
+      };
+      const _handleFolderPublishExisting = async (dirIndex, folderRelPath, folderName, anchorEl) => {
+        let url = `/api?action=list_folder_videos&dir_index=${encodeURIComponent(dirIndex)}&_t=${Date.now()}`;
+        if (folderRelPath) url += `&rel_path=${encodeURIComponent(folderRelPath)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok || data.status === 'error') throw new Error(data.code || 'Error');
+        const files = data.files || [];
+        if (!files.length) { showToast(t('push.no_results'), 'info'); return; }
+        const links = files.map(f => ({name: f.name.replace(/\.[^.]+$/, ''), url: f.video_url, type: ''}));
+        _showStreamPicker(anchorEl, links, null, folderName, t('push.add_to_existing_archive'));
+      };
+
+      let _pendingDirIdx = -1;
+      let _pendingFilename = '';
+      let _pendingRelPath = '';
+      let _pendingIsFolder = false;
+      let _curDirIndex = -1;
+      let _curRelPath = '';
+      let _curDirLabel = '';
+      let _curEntries = [];
+      let _searchQuery = '';
+      let _activePushes = [];
+      let _jobsTimer = null;
+      let _jobModalTimer = null;
+      let _folderPushDirIdx = -1;
+      let _folderPushRelPath = '';
+      let _folderPushElapsedTimer = null;
+
+      const closeJobModal = () => {
+        if (_jobModalTimer) { clearInterval(_jobModalTimer); _jobModalTimer = null; }
+        document.getElementById('push-job-modal')?.classList.add('hidden');
+      };
+
+      const openJobModal = (job) => {
+        const {rtmpHost: _rh, hlsOrigin: _ho} = (window._sh_obsUrls?.() || {});
+        const rtmpUrl = `rtmp://${_rh || window.location.hostname + ':1935'}/live/${job.stream_key}`;
+        const hlsUrl  = `${_ho || window.location.origin}/h/${job.hls_slug || job.stream_key}`;
+        const iconEl = document.getElementById('push-job-icon');
+        if (iconEl) iconEl.innerHTML = job.is_folder ? '&#128193;' : '&#127916;';
+        const typeEl = document.getElementById('push-job-type-label');
+        if (typeEl) typeEl.textContent = job.is_folder ? t('push.folder') : t('push.file');
+        document.getElementById('push-job-name').textContent = job.filename;
+        document.getElementById('push-job-key').textContent  = job.stream_key;
+        const loopRow = document.getElementById('push-job-loop-row');
+        if (loopRow) loopRow.style.display = job.loop ? 'flex' : 'none';
+        const elapsedEl = document.getElementById('push-job-elapsed');
+        const base = job.elapsed, t0 = Date.now();
+        const tick = () => { if (elapsedEl) elapsedEl.textContent = fmtSecs(base + Math.round((Date.now() - t0) / 1000)); };
+        tick();
+        if (_jobModalTimer) clearInterval(_jobModalTimer);
+        _jobModalTimer = setInterval(tick, 1000);
+        const _rebind = (id, fn) => {
+          const el = document.getElementById(id); if (!el) return;
+          const c = el.cloneNode(true); el.replaceWith(c);
+          document.getElementById(id).addEventListener('click', fn);
+        };
+        const _copyBtn = (id, url) => _rebind(id, () => {
+          navigator.clipboard.writeText(url).then(() => {
+            const b = document.getElementById(id); if (!b) return;
+            const orig = b.textContent;
+            b.textContent = t('push.copied');
+            setTimeout(() => { const b2 = document.getElementById(id); if (b2) b2.textContent = orig; }, 1500);
+          });
+        });
+        _copyBtn('push-job-copy-rtmp', rtmpUrl);
+        _copyBtn('push-job-copy-hls', hlsUrl);
+        _rebind('push-job-add-stream', () => {
+          window._sh_openStreamEditor?.({name: job.filename.replace(/\.[^.]+$/, ''), hls_url: hlsUrl});
+          closeJobModal();
+        });
+        _rebind('push-job-add-stream-existing', () => {
+          const _btn = document.getElementById('push-job-add-stream-existing');
+          _showStreamPicker(_btn, [{name: 'Default', url: hlsUrl, type: 'hls'}], closeJobModal, job.filename.replace(/\.[^.]+$/, ''));
+        });
+        _rebind('push-job-stop', async () => {
+          const b = document.getElementById('push-job-stop'); if (b) b.disabled = true;
+          try {
+            await pushFetch('stop_push', {job_id: job.job_id});
+            closeJobModal();
+            await loadPushJobs();
+          } catch(e) {
+            if (b) b.disabled = false;
+            showToast(e.message, 'error');
+          }
+        });
+        const _stopBtn = document.getElementById('push-job-stop');
+        if (_stopBtn) _stopBtn.disabled = false;
+        document.getElementById('push-job-modal')?.classList.remove('hidden');
+      };
+
+      const _randKey = () => {
+        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        return Array.from({length: 12}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      };
+
+      const closeFolderPushModal = () => {
+        if (_folderPushElapsedTimer) { clearInterval(_folderPushElapsedTimer); _folderPushElapsedTimer = null; }
+        document.getElementById('folder-push-modal')?.classList.add('hidden');
+      };
+
+      const _renderFolderPushList = async () => {
+        const listEl = document.getElementById('folder-push-file-list');
+        if (!listEl) return;
+        listEl.innerHTML = `<div style="color:var(--muted);padding:8px;font-size:.9em;">&#8987; ...</div>`;
+        let files = [];
+        try {
+          const res = await fetch(`/api?action=list_folder_videos&dir_index=${_folderPushDirIdx}&rel_path=${encodeURIComponent(_folderPushRelPath)}&mode=push&_t=${Date.now()}`);
+          const data = await res.json();
+          if (!res.ok || data.status === 'error') throw new Error(data.code || 'Error');
+          files = data.files || [];
+        } catch(e) {
+          listEl.innerHTML = `<div style="color:var(--danger);padding:8px;font-size:.9em;">${_esc(e.message)}</div>`;
+          return;
+        }
+        if (!files.length) {
+          listEl.innerHTML = `<div style="color:var(--muted);padding:8px;font-size:.9em;">无可推流文件</div>`;
+          return;
+        }
+        const jobByFile = {};
+        _activePushes.forEach(j => {
+          if (!j.is_folder && j.dir_index === _folderPushDirIdx) {
+            const rp = _folderPushRelPath;
+            const inScope = rp
+              ? (j.push_rel_path === rp || j.push_rel_path.startsWith(rp + '/'))
+              : true;
+            if (inScope) jobByFile[(j.push_rel_path || '') + '|' + j.filename] = j;
+          }
+        });
+        const rows = files.map(f => {
+          const job = jobByFile[(f.file_dir_rel || '') + '|' + f.name];
+          const dotIdx = f.name.lastIndexOf('.');
+          const ext = dotIdx >= 0 ? f.name.slice(dotIdx + 1) : '';
+          const displayName = f.display_name || f.name;
+          const displayNoExt = displayName.lastIndexOf('.') >= 0
+            ? displayName.slice(0, displayName.lastIndexOf('.'))
+            : displayName;
+          if (job) {
+            return `<div class="fp-row" style="display:flex;flex-direction:column;gap:5px;background:var(--bg);border:1px solid var(--line);border-left:3px solid #2dc975;border-radius:6px;padding:8px 10px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="live-dot" style="flex-shrink:0;"></span>
+                <span style="flex:1;min-width:0;font-size:.87em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${_esc(displayName)}">${_esc(displayNoExt)}</span>
+                <span class="fp-elapsed" data-base="${job.elapsed}" data-t0="${Date.now()}" style="font-size:.78em;color:var(--muted);flex-shrink:0;min-width:44px;text-align:right;font-variant-numeric:tabular-nums;">${fmtSecs(job.elapsed)}</span>
+                <button type="button" class="fp-stop-btn btn-danger" data-job-id="${_esc(job.job_id)}" style="padding:4px 5px;font-size:.80em;flex-shrink:0;">${_esc(t('push.stop'))}</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;padding-left:18px;">
+                <span style="font-family:monospace;font-size:.78em;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${_esc(job.stream_key)}</span>
+                <button type="button" class="fp-copy-rtmp-btn btn-secondary" data-stream-key="${_esc(job.stream_key)}" data-hls-slug="${_esc(job.hls_slug||job.stream_key)}" style="font-size:.75em;padding:3px 7px;flex-shrink:0;">${_esc(t('push.copy_rtmp'))}</button>
+                <button type="button" class="fp-copy-hls-btn btn-secondary" data-stream-key="${_esc(job.stream_key)}" data-hls-slug="${_esc(job.hls_slug||job.stream_key)}" style="font-size:.75em;padding:3px 7px;flex-shrink:0;">${_esc(t('push.copy_hls'))}</button>
+                <div style="display:inline-flex;flex-shrink:0;">
+                  <button type="button" class="fp-add-stream-btn btn-secondary" data-filename="${_esc(job.filename)}" data-display-name="${_esc(displayName)}" data-hls-slug="${_esc(job.hls_slug||job.stream_key)}" style="font-size:.75em;padding:3px 7px;border-radius:4px 0 0 4px;">${_esc(t('push.add_stream'))}</button>
+                  <button type="button" class="fp-add-to-existing-btn btn-secondary" data-filename="${_esc(job.filename)}" data-display-name="${_esc(displayName)}" data-hls-slug="${_esc(job.hls_slug||job.stream_key)}" style="font-size:.80em;padding:3px 3px;border-left:1px solid rgba(255,255,255,.15);border-radius:0 4px 4px 0;" title="添加到现有直播">&#9662;</button>
+                </div>
+              </div>
+            </div>`;
+          } else {
+            return `<div class="fp-row" style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;">
+              <span style="flex:1;min-width:0;font-size:.87em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${_esc(displayName)}">${_esc(displayNoExt)}<span style="margin-left:5px;font-size:.75em;color:var(--muted);">${_esc(ext.toUpperCase())}</span></span>
+              <div style="position:relative;flex-shrink:0;">
+                <input type="text" class="fp-key-input" value="${_esc(_randKey())}" data-filename="${_esc(f.name)}" style="width:140px;font-size:.82em;padding:4px 28px 4px 6px;box-sizing:border-box;">
+                <button type="button" class="fp-random-btn" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:.9em;padding:0;opacity:.55;" title="随机生成">&#x1F3B2;</button>
+              </div>
+              <button type="button" class="fp-start-btn btn-primary" data-filename="${_esc(f.name)}" data-rel-path="${_esc(f.file_dir_rel !== undefined ? f.file_dir_rel : _folderPushRelPath)}" style="padding:4px 5px;font-size:.80em;flex-shrink:0;">${_esc(t('push.start'))}</button>
+            </div>`;
+          }
+        }).join('');
+        listEl.innerHTML = rows;
+
+        // Footer state
+        const _pendingCount = listEl.querySelectorAll('.fp-start-btn').length;
+        const _activeCount  = listEl.querySelectorAll('.fp-stop-btn').length;
+        const _startAllBtn   = document.getElementById('folder-push-start-all-btn');
+        const _addAllBtn     = document.getElementById('folder-push-add-all-btn');
+        const _addAllGroup   = document.getElementById('folder-push-add-all-group');
+        const _loopLabel     = document.getElementById('folder-push-loop-label');
+        const _loopCheck     = document.getElementById('folder-push-loop-check');
+        if (_startAllBtn) {
+          if (_pendingCount === 0 && _activeCount > 0) {
+            _startAllBtn.textContent  = t('push.stop_all');
+            _startAllBtn.className    = 'btn-danger';
+            _startAllBtn.dataset.mode = 'stop';
+            _startAllBtn.disabled     = false;
+          } else {
+            _startAllBtn.textContent  = t('push.start_all');
+            _startAllBtn.className    = 'btn-primary';
+            _startAllBtn.dataset.mode = 'start';
+            _startAllBtn.disabled     = _pendingCount === 0;
+          }
+        }
+        if (_addAllGroup) _addAllGroup.style.display = _activeCount > 0 ? 'flex' : 'none';
+        if (_loopCheck) _loopCheck.disabled = _pendingCount === 0;
+        if (_loopLabel) _loopLabel.style.opacity = _pendingCount === 0 ? '0.45' : '';
+
+        // Copy / add-stream per-row bindings
+        const {rtmpHost: _rh, hlsOrigin: _ho} = (window._sh_obsUrls?.() || {});
+        const _mkRtmpUrl = key  => `rtmp://${_rh || window.location.hostname + ':1935'}/live/${key}`;
+        const _mkHlsUrl  = slug => `${_ho || window.location.origin}/h/${slug}`;
+        const _copyFeedback = (btn, text) => {
+          navigator.clipboard.writeText(text).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = t('push.copied');
+            setTimeout(() => { btn.textContent = orig; }, 1500);
+          });
+        };
+        listEl.querySelectorAll('.fp-copy-rtmp-btn').forEach(btn => {
+          btn.addEventListener('click', () => _copyFeedback(btn, _mkRtmpUrl(btn.dataset.streamKey)));
+        });
+        listEl.querySelectorAll('.fp-copy-hls-btn').forEach(btn => {
+          btn.addEventListener('click', () => _copyFeedback(btn, _mkHlsUrl(btn.dataset.hlsSlug)));
+        });
+        listEl.querySelectorAll('.fp-add-stream-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const name = btn.dataset.filename.replace(/\.[^.]+$/, '');
+            window._sh_openStreamEditor?.({name, hls_url: _mkHlsUrl(btn.dataset.hlsSlug)});
+            closeFolderPushModal();
+          });
+        });
+        listEl.querySelectorAll('.fp-add-to-existing-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const url  = _mkHlsUrl(btn.dataset.hlsSlug);
+            const name = btn.dataset.filename.replace(/\.[^.]+$/, '');
+            _showStreamPicker(btn, [{name: 'Default', url, type: 'hls'}], () => closeFolderPushModal(), name);
+          });
+        });
+
+        listEl.querySelectorAll('.fp-random-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const inp = btn.closest('.fp-row')?.querySelector('.fp-key-input');
+            if (inp) inp.value = _randKey();
+          });
+        });
+        listEl.querySelectorAll('.fp-start-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const row = btn.closest('.fp-row');
+            const key = (row?.querySelector('.fp-key-input')?.value || '').trim();
+            if (!key) { showToast(t('err.stream_key_required') || 'Stream key is required', 'warn'); return; }
+            const loop = document.getElementById('folder-push-loop-check')?.checked || false;
+            btn.disabled = true;
+            try {
+              await pushFetch('start_push', {
+                dir_index:  _folderPushDirIdx,
+                rel_path:   btn.dataset.relPath,
+                filename:   btn.dataset.filename,
+                stream_key: key,
+                loop,
+              });
+              await loadPushJobs();
+              await _renderFolderPushList();
+            } catch(e) {
+              btn.disabled = false;
+              showToast(e.message, 'error');
+            }
+          });
+        });
+        listEl.querySelectorAll('.fp-stop-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              await pushFetch('stop_push', {job_id: btn.dataset.jobId});
+              _activePushes = _activePushes.filter(j => j.job_id !== btn.dataset.jobId);
+              await _renderFolderPushList();
+              loadPushJobs(); // background sync for file browser entries
+            } catch(e) {
+              btn.disabled = false;
+              showToast(e.message, 'error');
+            }
+          });
+        });
+
+        if (_folderPushElapsedTimer) { clearInterval(_folderPushElapsedTimer); _folderPushElapsedTimer = null; }
+        if (listEl.querySelector('.fp-elapsed')) {
+          _folderPushElapsedTimer = setInterval(() => {
+            listEl.querySelectorAll('.fp-elapsed').forEach(el => {
+              const base = parseFloat(el.dataset.base) || 0;
+              const t0   = parseFloat(el.dataset.t0)   || Date.now();
+              el.textContent = fmtSecs(base + Math.round((Date.now() - t0) / 1000));
+            });
+          }, 1000);
+        }
+      };
+
+      const openFolderPushModal = async (dirIndex, folderRelPath, folderName) => {
+        _folderPushDirIdx  = dirIndex;
+        _folderPushRelPath = folderRelPath;
+        document.getElementById('folder-push-modal-name').textContent = folderName;
+        const _loopFromJobs = _activePushes.some(j =>
+          !j.is_folder && j.dir_index === dirIndex &&
+          (j.push_rel_path === folderRelPath || j.push_rel_path.startsWith(folderRelPath + '/')) &&
+          j.loop
+        );
+        document.getElementById('folder-push-loop-check').checked = _loopFromJobs;
+        document.getElementById('folder-push-modal')?.classList.remove('hidden');
+        await _renderFolderPushList();
+      };
+
+      const loadPushJobs = async () => {
+        try {
+          const data = await pushFetch('list_pushes');
+          _activePushes = data.pushes || [];
+        } catch(e) { /* keep stale state */ }
+        if (_curDirIndex >= 0) {
+          const filtered = _searchQuery
+            ? _curEntries.filter(en => en.name.toLowerCase().includes(_searchQuery))
+            : _curEntries;
+          renderEntries(filtered, _curDirIndex, _curRelPath);
+        }
+      };
+
+      // --- File browser ---
+      const _highlightSidebarBtn = (sidebar, dirIndex) => {
+        sidebar.querySelectorAll('button').forEach(b => { b.style.opacity = '0.7'; b.style.outline = ''; });
+        const active = sidebar.querySelector(`button[data-dir-index="${dirIndex}"]`);
+        if (active) { active.style.opacity = '1'; active.style.outline = '2px solid var(--accent)'; }
+      };
+
+      const loadSidebar = async () => {
+        const sidebar = document.getElementById('push-sidebar');
+        if (!sidebar) return;
+        try {
+          const res = await pushFetch('list_videos');
+          sidebar.innerHTML = '';
+          (res.roots || []).forEach(root => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-secondary';
+            btn.style.cssText = 'width:100%;text-align:left;padding:6px 10px;font-size:.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            btn.textContent = root.label;
+            btn.dataset.dirIndex = root.index;
+            btn.addEventListener('click', () => {
+              _highlightSidebarBtn(sidebar, root.index);
+              browseDir(root.index, '');
+            });
+            sidebar.appendChild(btn);
+          });
+          if (res.roots && res.roots.length > 0) {
+            if (_curDirIndex >= 0) {
+              _highlightSidebarBtn(sidebar, _curDirIndex);
+              renderBreadcrumb(_curDirLabel, _curRelPath, _curDirIndex);
+              renderEntries(_curEntries, _curDirIndex, _curRelPath);
+              browseDir(_curDirIndex, _curRelPath, true);
+            } else {
+              sidebar.querySelector('button')?.click();
+            }
+          }
+        } catch(e) {
+          if (sidebar) sidebar.innerHTML = `<div style="color:var(--danger);font-size:.8em;">${_esc(e.message)}</div>`;
+        }
+      };
+
+      const browseDir = async (dirIndex, relPath, silent = false) => {
+        _curDirIndex = dirIndex;
+        _curRelPath = relPath;
+        _searchQuery = '';
+        const searchInput = document.getElementById('push-search-input');
+        if (searchInput) searchInput.value = '';
+        const entryList = document.getElementById('push-entry-list');
+        if (!silent && entryList) entryList.innerHTML = '<div style="color:var(--muted);padding:16px 0;">...</div>';
+        try {
+          let url = `/api?action=list_videos&dir_index=${encodeURIComponent(dirIndex)}&_t=${Date.now()}`;
+          if (relPath) url += `&rel_path=${encodeURIComponent(relPath)}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (!res.ok || data.status === 'error') throw new Error(t('err.' + (data.code || 'server_error')) || data.code || 'Error');
+          _curDirLabel = data.label || '';
+          _curEntries = data.entries || [];
+          renderBreadcrumb(_curDirLabel, data.rel_path || '', dirIndex);
+          renderEntries(_curEntries, dirIndex, data.rel_path || '');
+        } catch(e) {
+          if (entryList) entryList.innerHTML = `<div style="color:var(--danger);font-size:.85em;">${_esc(e.message)}</div>`;
+        }
+      };
+
+      const renderBreadcrumb = (label, relPath, dirIndex) => {
+        const bc = document.getElementById('push-breadcrumb');
+        if (!bc) return;
+        const parts = relPath ? relPath.split('/').filter(Boolean) : [];
+        let html = `<span style="cursor:pointer;color:var(--accent);" class="bc-seg" data-idx="${dirIndex}" data-path="">${_esc(label)}</span>`;
+        let built = '';
+        parts.forEach(part => {
+          built = built ? built + '/' + part : part;
+          const path = built;
+          html += ` <span style="color:var(--muted);">/</span> <span style="cursor:pointer;color:var(--accent);" class="bc-seg" data-idx="${dirIndex}" data-path="${_esc(path)}">${_esc(part)}</span>`;
+        });
+        bc.innerHTML = html;
+        bc.querySelectorAll('.bc-seg').forEach(seg => {
+          seg.addEventListener('click', () => browseDir(parseInt(seg.dataset.idx, 10), seg.dataset.path));
+        });
+      };
+
+      const renderEntries = (entries, dirIndex, relPath) => {
+        const list = document.getElementById('push-entry-list');
+        if (!list) return;
+        const parentPath = relPath ? (relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '') : null;
+        let html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+        if (parentPath !== null && !_searchQuery) {
+          html += `<div class="push-dir-row" data-idx="${dirIndex}" data-path="${_esc(parentPath)}" style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;cursor:pointer;color:var(--muted);">
+            <span style="font-size:1.1em;">&#8593;&#xFE0E;</span>
+            <div style="font-weight:600;font-size:.9em;">..</div>
+          </div>`;
+        }
+        if (!entries.length) {
+          const emptyKey = _searchQuery ? 'push.no_results' : 'push.dir_empty';
+          html += `<div style="color:var(--muted);text-align:center;padding:32px;">${_esc(t(emptyKey))}</div>`;
+          html += '</div>';
+          list.innerHTML = html;
+          list.querySelectorAll('.push-dir-row').forEach(row => {
+            row.addEventListener('click', () => browseDir(parseInt(row.dataset.idx, 10), row.dataset.path));
+          });
+          return;
+        }
+        const _jobMap = {};
+        _activePushes.forEach(j => {
+          if (!j.is_folder) _jobMap[`v|${j.dir_index}|${j.push_rel_path}|${j.filename}`] = j;
+        });
+
+        entries.forEach(entry => {
+          if (entry.type === 'dir') {
+            const childPath = relPath ? relPath + '/' + entry.name : entry.name;
+            const _folderHasJob = entry.has_video
+              ? _activePushes.some(j => !j.is_folder && j.dir_index === dirIndex &&
+                  (j.push_rel_path === childPath || j.push_rel_path.startsWith(childPath + '/')))
+              : false;
+            const folderBtns = (entry.has_playable || entry.has_video)
+              ? `<div style="display:flex;gap:6px;flex-shrink:0;" onclick="event.stopPropagation()">
+                  ${entry.has_playable ? `<div style="display:flex;gap:0;"><button class="btn-secondary push-folder-publish-btn" data-dir-index="${dirIndex}" data-folder-rel-path="${_esc(childPath)}" data-folder-name="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;border-radius:6px 0 0 6px;">${_esc(t('push.publish_archive'))}</button><button class="btn-secondary push-folder-publish-existing-btn" data-dir-index="${dirIndex}" data-folder-rel-path="${_esc(childPath)}" data-folder-name="${_esc(entry.name)}" style="padding:4px 3px;font-size:.80em;border-left:1px solid rgba(255,255,255,.15);border-radius:0 6px 6px 0;">&#9662;</button></div>` : ''}
+                  ${entry.has_video
+                    ? (_folderHasJob
+                      ? `<button class="btn-success push-folder-job-btn" data-dir-index="${dirIndex}" data-folder-rel-path="${_esc(childPath)}" data-folder-name="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;display:inline-flex;align-items:center;gap:5px;"><span class="live-dot"></span>${_esc(t('push.edit_push'))}</button>`
+                      : `<button class="btn-primary push-folder-push-btn" data-dir-index="${dirIndex}" data-folder-rel-path="${_esc(childPath)}" data-folder-name="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;">${_esc(t('push.start'))}</button>`)
+                    : ''}
+                </div>` : '';
+            html += `<div class="push-dir-row" data-idx="${dirIndex}" data-path="${_esc(childPath)}" style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;cursor:pointer;">
+              <span style="font-size:1.1em;">&#128193;</span>
+              <div style="font-weight:600;font-size:.9em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(entry.name)}</div>
+              ${folderBtns}
+            </div>`;
+          } else {
+            const _dotIdx = entry.name.lastIndexOf('.');
+            const _stem = _dotIdx >= 0 ? entry.name.slice(0, _dotIdx) : entry.name;
+            const _ext = _dotIdx >= 0 ? entry.name.slice(_dotIdx + 1).toUpperCase() : '';
+            const _tagBg = {MP4:'#16a34a',MOV:'#16a34a',M4V:'#16a34a',WEBM:'#0284c7',MKV:'#7c3aed',TS:'#b45309',AVI:'#b45309',FLV:'#b45309',WMV:'#b45309'}[_ext] || '#6b7280';
+            const _tagHtml = _ext
+              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:.7em;font-weight:700;letter-spacing:.04em;background:${_tagBg};color:#fff;">${_esc(_ext)}</span>`
+              : '';
+            html += `<div style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;">
+              <span style="font-size:1.1em;">&#127916;</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:.9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${_esc(entry.name)}">${_esc(_stem)}</div>
+                <div style="font-size:.8em;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;">${_esc(fmtBytes(entry.size || 0))}${_tagHtml}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0;">
+                ${entry.video_url ? `<div style="display:flex;gap:0;"><button class="btn-secondary push-publish-btn" data-video-url="${_esc(entry.video_url)}" data-filename="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;border-radius:6px 0 0 6px;">${_esc(t('push.publish_archive'))}</button><button class="btn-secondary push-publish-existing-btn" data-video-url="${_esc(entry.video_url)}" data-filename="${_esc(entry.name)}" style="padding:4px 3px;font-size:.80em;border-left:1px solid rgba(255,255,255,.15);border-radius:0 6px 6px 0;">&#9662;</button></div>` : ''}
+                ${(() => { const _fj = _jobMap[`v|${dirIndex}|${relPath}|${entry.name}`] ?? null;
+                  return _fj
+                    ? `<button class="btn-success push-job-btn" data-job-id="${_esc(_fj.job_id)}" style="padding:4px 5px;font-size:.80em;display:inline-flex;align-items:center;gap:5px;"><span class="live-dot"></span>${_esc(t('push.edit_push'))}</button>`
+                    : `<button class="btn-primary push-file-btn" data-dir-index="${dirIndex}" data-rel-path="${_esc(relPath)}" data-filename="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;">${_esc(t('push.start'))}</button>`;
+                })()}
+              </div>
+            </div>`;
+          }
+        });
+        html += '</div>';
+        list.innerHTML = html;
+
+        list.querySelectorAll('.push-dir-row').forEach(row => {
+          row.addEventListener('click', () => browseDir(parseInt(row.dataset.idx, 10), row.dataset.path));
+        });
+        const _openPushModal = (isFolder, displayName, dirIdx, relPath, filename) => {
+          _pendingDirIdx = dirIdx;
+          _pendingFilename = filename;
+          _pendingRelPath = relPath;
+          _pendingIsFolder = isFolder;
+          const fnEl = document.getElementById('push-modal-filename');
+          if (fnEl) fnEl.textContent = displayName;
+          const iconEl = document.getElementById('push-modal-file-icon');
+          if (iconEl) iconEl.innerHTML = isFolder ? '&#128193;' : '&#127916;';
+          const labelEl = document.getElementById('push-modal-type-label');
+          if (labelEl) labelEl.textContent = isFolder ? t('push.folder') : t('push.file');
+          const keyEl = document.getElementById('push-stream-key-input');
+          if (keyEl) keyEl.value = '';
+          const loopEl = document.getElementById('push-loop-check');
+          if (loopEl) loopEl.checked = false;
+          document.getElementById('push-modal')?.classList.remove('hidden');
+        };
+
+        list.querySelectorAll('.push-file-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            _openPushModal(false, btn.dataset.filename, parseInt(btn.dataset.dirIndex, 10), btn.dataset.relPath || '', btn.dataset.filename);
+          });
+        });
+        list.querySelectorAll('.push-publish-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const name = btn.dataset.filename.replace(/\.[^.]+$/, '');
+            window._sh_openStreamEditor({name, hls_url: btn.dataset.videoUrl, link_type: '', label: 'ARCHIVE'});
+          });
+        });
+        list.querySelectorAll('.push-publish-existing-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const name = btn.dataset.filename.replace(/\.[^.]+$/, '');
+            _showStreamPicker(btn, [{name: 'Default', url: btn.dataset.videoUrl, type: ''}], null, name, t('push.add_to_existing_archive'));
+          });
+        });
+        list.querySelectorAll('.push-folder-push-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            openFolderPushModal(parseInt(btn.dataset.dirIndex, 10), btn.dataset.folderRelPath || '', btn.dataset.folderName);
+          });
+        });
+        list.querySelectorAll('.push-folder-job-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            openFolderPushModal(parseInt(btn.dataset.dirIndex, 10), btn.dataset.folderRelPath || '', btn.dataset.folderName);
+          });
+        });
+        list.querySelectorAll('.push-folder-publish-btn').forEach(btn => {
+          btn.addEventListener('click', async e => {
+            e.stopPropagation();
+            btn.disabled = true;
+            try {
+              await _handleFolderPublish(parseInt(btn.dataset.dirIndex, 10), btn.dataset.folderRelPath, btn.dataset.folderName);
+            } catch(err) {
+              showToast(err.message, 'error');
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+        list.querySelectorAll('.push-folder-publish-existing-btn').forEach(btn => {
+          btn.addEventListener('click', async e => {
+            e.stopPropagation();
+            btn.disabled = true;
+            try {
+              await _handleFolderPublishExisting(parseInt(btn.dataset.dirIndex, 10), btn.dataset.folderRelPath, btn.dataset.folderName, btn);
+            } catch(err) {
+              showToast(err.message, 'error');
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+        list.querySelectorAll('.push-job-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const job = _activePushes.find(j => j.job_id === btn.dataset.jobId);
+            if (job) openJobModal(job);
+          });
+        });
+      };
+
+      const startJobPolling = () => {
+        if (_jobsTimer) clearInterval(_jobsTimer);
+        _jobsTimer = setInterval(loadPushJobs, 5000);
+      };
+      const stopJobPolling = () => {
+        if (_jobsTimer) { clearInterval(_jobsTimer); _jobsTimer = null; }
+        if (_jobModalTimer) { clearInterval(_jobModalTimer); _jobModalTimer = null; }
+        if (_folderPushElapsedTimer) { clearInterval(_folderPushElapsedTimer); _folderPushElapsedTimer = null; }
+        document.getElementById('push-job-modal')?.classList.add('hidden');
+        document.getElementById('folder-push-modal')?.classList.add('hidden');
+      };
+      const openPushView = () => {
+        loadSidebar();
+        loadPushJobs();
+        startJobPolling();
+      };
+
+      _langChangeHooks.push(() => {
+        const si = document.getElementById('push-search-input');
+        if (si) si.placeholder = t('push.search');
+        if (_curDirIndex >= 0) {
+          renderBreadcrumb(_curDirLabel, _curRelPath, _curDirIndex);
+          const filtered = _searchQuery
+            ? _curEntries.filter(en => en.name.toLowerCase().includes(_searchQuery))
+            : _curEntries;
+          renderEntries(filtered, _curDirIndex, _curRelPath);
+        }
+      });
+
+      let _pickerLinks = [];
+      let _pickerName = '';
+      let _pickerAfterPick = null;
+      let _pickerSearch = '';
+      let _pickerTab = 'all';
+      let _pickerPage = 0;
+      const _PICKER_PAGE_SIZE = 8;
+
+      const _closeStreamPickerModal = () => {
+        document.getElementById('stream-picker-modal')?.classList.add('hidden');
+      };
+
+      const _renderPickerList = () => {
+        const streams = window._sh_allStreams?.() || [];
+        let filtered = _pickerTab === 'all' ? streams : streams.filter(s => s.stream_label === _pickerTab);
+        if (_pickerSearch) filtered = filtered.filter(s => s.event_name.toLowerCase().includes(_pickerSearch));
+        const total = filtered.length;
+        const totalPages = Math.max(1, Math.ceil(total / _PICKER_PAGE_SIZE));
+        _pickerPage = Math.min(_pickerPage, totalPages - 1);
+        const page = filtered.slice(_pickerPage * _PICKER_PAGE_SIZE, (_pickerPage + 1) * _PICKER_PAGE_SIZE);
+        const listEl = document.getElementById('stream-picker-list');
+        if (!listEl) return;
+        if (!page.length) {
+          listEl.innerHTML = `<div style="color:var(--muted);text-align:center;padding:28px;font-size:.9em;">${_esc(t('push.picker_empty'))}</div>`;
+        } else {
+          listEl.innerHTML = page.map(s => {
+            const lc = s.stream_label === 'ARCHIVE' ? '#7c6af7' : '#2dc975';
+            return `<div class="picker-row" data-stream-id="${_esc(String(s.id))}" style="display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:4px;margin:0 -6px;">
+              <span style="flex-shrink:0;font-size:.68em;padding:2px 6px;border-radius:3px;background:${_esc(lc)};color:#fff;font-weight:700;">${_esc(s.stream_label||'LIVE')}</span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9em;">${_esc(s.event_name)}</span>
+            </div>`;
+          }).join('');
+          listEl.querySelectorAll('.picker-row').forEach(row => {
+            row.addEventListener('mouseover', () => { row.style.background = 'var(--hover,rgba(128,128,128,.08))'; });
+            row.addEventListener('mouseout',  () => { row.style.background = ''; });
+            row.addEventListener('click', () => {
+              _closeStreamPickerModal();
+              window._sh_openEditorForStream?.(row.dataset.streamId, _pickerLinks, _pickerName);
+              _pickerAfterPick?.();
+              _pickerLinks = [];
+              _pickerName = '';
+              _pickerAfterPick = null;
+            });
+          });
+        }
+        const pagEl = document.getElementById('stream-picker-pagination');
+        if (pagEl) {
+          if (totalPages <= 1) {
+            pagEl.style.display = 'none';
+          } else {
+            pagEl.style.display = 'flex';
+            pagEl.innerHTML = `
+              <button type="button" class="btn-secondary" id="picker-prev" style="font-size:.82em;padding:4px 12px;" ${_pickerPage === 0 ? 'disabled' : ''}>&#8249;</button>
+              <span style="font-size:.85em;color:var(--muted);min-width:60px;text-align:center;">${_pickerPage + 1} / ${totalPages}</span>
+              <button type="button" class="btn-secondary" id="picker-next" style="font-size:.82em;padding:4px 12px;" ${_pickerPage >= totalPages - 1 ? 'disabled' : ''}>&#8250;</button>`;
+            document.getElementById('picker-prev')?.addEventListener('click', () => { _pickerPage--; _renderPickerList(); });
+            document.getElementById('picker-next')?.addEventListener('click', () => { _pickerPage++; _renderPickerList(); });
+          }
+        }
+      };
+
+      const _openStreamPickerModal = (newLinks, afterPick, newName) => {
+        _pickerLinks = newLinks;
+        _pickerName  = newName || '';
+        _pickerAfterPick = afterPick;
+        _pickerSearch = '';
+        _pickerTab = 'all';
+        _pickerPage = 0;
+        const searchEl = document.getElementById('stream-picker-search');
+        if (searchEl) searchEl.value = '';
+        document.querySelectorAll('.stream-picker-tab').forEach(tab => {
+          const isActive = tab.dataset.tab === 'all';
+          tab.style.background = isActive ? 'var(--accent)' : 'var(--bg)';
+          tab.style.color      = isActive ? '#fff' : 'var(--text)';
+        });
+        _renderPickerList();
+        document.getElementById('stream-picker-modal')?.classList.remove('hidden');
+      };
+
+      const _showStreamPicker = (anchorEl, newLinks, afterPick, newName, menuLabel) => {
+        document.getElementById('_sh-stream-picker')?.remove();
+        const menu = document.createElement('div');
+        menu.id = '_sh-stream-picker';
+        menu.style.cssText = 'position:fixed;z-index:10000;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:4px 0;min-width:150px;';
+        const rect = anchorEl.getBoundingClientRect();
+        menu.style.top  = (rect.bottom + 4) + 'px';
+        menu.style.left = Math.max(0, rect.right - 154) + 'px';
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:8px 14px;cursor:pointer;font-size:.87em;white-space:nowrap;';
+        item.textContent = menuLabel || t('push.add_to_existing');
+        item.addEventListener('mouseover', () => { item.style.background = 'var(--hover,rgba(128,128,128,.1))'; });
+        item.addEventListener('mouseout',  () => { item.style.background = ''; });
+        item.addEventListener('click', () => {
+          menu.remove();
+          document.removeEventListener('click', _closeMenu, true);
+          _openStreamPickerModal(newLinks, afterPick, newName);
+        });
+        menu.appendChild(item);
+        document.body.appendChild(menu);
+        const _closeMenu = e => {
+          if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', _closeMenu, true);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', _closeMenu, true), 0);
+      };
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelector('[data-admin-view-target="local"]')
+          ?.addEventListener('click', openPushView);
+
+        document.querySelectorAll('.admin-menu-btn:not([data-admin-view-target="local"]), .admin-sub-btn')
+          .forEach(btn => btn.addEventListener('click', stopJobPolling));
+
+        const _bindOverlayClose = (el, fn) => {
+          if (!el) return;
+          let _md = false;
+          el.addEventListener('mousedown', e => { _md = e.target === el; });
+          el.addEventListener('click',     e => { if (_md && e.target === el) fn(); });
+        };
+
+        const pushModal = document.getElementById('push-modal');
+        const closePushModal = () => pushModal?.classList.add('hidden');
+        document.getElementById('push-modal-close')?.addEventListener('click', closePushModal);
+        _bindOverlayClose(pushModal, closePushModal);
+
+        const pushJobModal = document.getElementById('push-job-modal');
+        document.getElementById('push-job-modal-close')?.addEventListener('click', closeJobModal);
+        _bindOverlayClose(pushJobModal, closeJobModal);
+
+        document.getElementById('folder-push-modal-close')?.addEventListener('click', closeFolderPushModal);
+        _bindOverlayClose(document.getElementById('folder-push-modal'), closeFolderPushModal);
+
+        document.getElementById('stream-picker-close')?.addEventListener('click', _closeStreamPickerModal);
+        _bindOverlayClose(document.getElementById('stream-picker-modal'), _closeStreamPickerModal);
+        document.getElementById('stream-picker-search')?.addEventListener('input', e => {
+          _pickerSearch = e.target.value.trim().toLowerCase();
+          _pickerPage = 0;
+          _renderPickerList();
+        });
+        document.querySelectorAll('.stream-picker-tab').forEach(tab => {
+          tab.addEventListener('click', () => {
+            _pickerTab = tab.dataset.tab;
+            _pickerPage = 0;
+            document.querySelectorAll('.stream-picker-tab').forEach(bt => {
+              const active = bt === tab;
+              bt.style.background = active ? 'var(--accent)' : 'var(--bg)';
+              bt.style.color      = active ? '#fff' : 'var(--text)';
+            });
+            _renderPickerList();
+          });
+        });
+        document.getElementById('folder-push-start-all-btn')?.addEventListener('click', async () => {
+          const allBtn = document.getElementById('folder-push-start-all-btn');
+          if (!allBtn || allBtn.disabled) return;
+          const mode  = allBtn.dataset.mode;
+          const listEl = document.getElementById('folder-push-file-list');
+          allBtn.disabled = true;
+          if (mode === 'stop') {
+            const stopBtns = Array.from(listEl?.querySelectorAll('.fp-stop-btn') || []);
+            const stoppedIds = new Set();
+            for (const sb of stopBtns) {
+              try {
+                await pushFetch('stop_push', {job_id: sb.dataset.jobId});
+                stoppedIds.add(sb.dataset.jobId);
+              } catch(e) {}
+            }
+            // Optimistic removal so re-render reflects immediate state
+            _activePushes = _activePushes.filter(j => !stoppedIds.has(j.job_id));
+            await _renderFolderPushList();
+            loadPushJobs(); // background sync for file browser entries
+          } else {
+            const loop = document.getElementById('folder-push-loop-check')?.checked || false;
+            const startRows = Array.from(listEl?.querySelectorAll('.fp-row') || [])
+              .map(r => ({btn: r.querySelector('.fp-start-btn'), inp: r.querySelector('.fp-key-input')}))
+              .filter(x => x.btn && x.inp);
+            for (const {btn: sb, inp} of startRows) {
+              const key = (inp.value || '').trim();
+              if (!key) continue;
+              try {
+                await pushFetch('start_push', {
+                  dir_index: _folderPushDirIdx, rel_path: sb.dataset.relPath,
+                  filename: sb.dataset.filename, stream_key: key, loop,
+                });
+              } catch(e) {}
+            }
+            await loadPushJobs();
+            await _renderFolderPushList();
+          }
+          allBtn.disabled = false;
+        });
+
+        document.getElementById('folder-push-add-all-btn')?.addEventListener('click', () => {
+          const {rtmpHost: _rh, hlsOrigin: _ho} = (window._sh_obsUrls?.() || {});
+          const _mkHlsUrl = slug => `${_ho || window.location.origin}/h/${slug}`;
+          const _rp = _folderPushRelPath;
+          const folderJobs = _activePushes.filter(j =>
+            !j.is_folder && j.dir_index === _folderPushDirIdx &&
+            (_rp ? (j.push_rel_path === _rp || j.push_rel_path.startsWith(_rp + '/')) : true)
+          );
+          if (!folderJobs.length) return;
+          const links = folderJobs.map(j => ({
+            name: j.filename.replace(/\.[^.]+$/, ''),
+            url:  _mkHlsUrl(j.hls_slug || j.stream_key),
+            type: '',
+          }));
+          const folderName = document.getElementById('folder-push-modal-name')?.textContent || '';
+          window._sh_openStreamEditor?.({name: folderName, links, label: 'ARCHIVE'});
+          closeFolderPushModal();
+        });
+
+        document.getElementById('folder-push-add-all-existing-btn')?.addEventListener('click', e => {
+          e.stopPropagation();
+          const {rtmpHost: _rh, hlsOrigin: _ho} = (window._sh_obsUrls?.() || {});
+          const _mkHlsUrl = slug => `${_ho || window.location.origin}/h/${slug}`;
+          const _rp = _folderPushRelPath;
+          const folderJobs = _activePushes.filter(j =>
+            !j.is_folder && j.dir_index === _folderPushDirIdx &&
+            (_rp ? (j.push_rel_path === _rp || j.push_rel_path.startsWith(_rp + '/')) : true)
+          );
+          if (!folderJobs.length) return;
+          const links = folderJobs.map(j => ({
+            name: j.filename.replace(/\.[^.]+$/, ''),
+            url:  _mkHlsUrl(j.hls_slug || j.stream_key),
+            type: '',
+          }));
+          const folderName = document.getElementById('folder-push-modal-name')?.textContent || '';
+          _showStreamPicker(e.currentTarget, links, () => closeFolderPushModal(), folderName);
+        });
+
+        document.getElementById('push-search-input')?.addEventListener('input', e => {
+          _searchQuery = e.target.value.trim().toLowerCase();
+          const filtered = _searchQuery
+            ? _curEntries.filter(en => en.name.toLowerCase().includes(_searchQuery))
+            : _curEntries;
+          renderEntries(filtered, _curDirIndex, _curRelPath);
+        });
+
+        document.getElementById('push-random-key-btn')?.addEventListener('click', () => {
+          const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+          const key = Array.from({length: 12}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+          const input = document.getElementById('push-stream-key-input');
+          if (input) { input.value = key; input.focus(); }
+        });
+
+        document.getElementById('push-start-btn')?.addEventListener('click', async () => {
+          const key = (document.getElementById('push-stream-key-input')?.value || '').trim();
+          const loop = document.getElementById('push-loop-check')?.checked || false;
+          if (!key) { showToast(t('err.stream_key_required') || 'Stream key is required', 'warn'); return; }
+          const btn = document.getElementById('push-start-btn');
+          btn.disabled = true;
+          try {
+            await pushFetch('start_push', {dir_index: _pendingDirIdx, rel_path: _pendingRelPath, filename: _pendingFilename, stream_key: key, loop});
+            await loadPushJobs();
+            closePushModal();
+            const newJob = _activePushes.find(j => j.stream_key === key);
+            if (newJob) openJobModal(newJob);
+          } catch(e) {
+            showToast(e.message, 'error');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+
+        const fileInput = document.getElementById('video-file-input');
+        const uploadBtn = document.getElementById('upload-video-btn');
+        uploadBtn?.addEventListener('click', () => fileInput?.click());
+        fileInput?.addEventListener('change', async () => {
+          const file = fileInput.files?.[0];
+          if (!file) return;
+          fileInput.value = '';
+          if (uploadBtn) uploadBtn.disabled = true;
+          await new Promise(resolve => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `/api?action=upload_video&filename=${encodeURIComponent(file.name)}&_t=${Date.now()}`);
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            if (xhr.upload) {
+              xhr.upload.onprogress = e => {
+                if (e.lengthComputable && uploadBtn) {
+                  uploadBtn.textContent = `${t('push.uploading') || 'Uploading'} ${Math.round(e.loaded / e.total * 100)}%`;
+                }
+              };
+            }
+            xhr.onload = () => {
+              if (uploadBtn) {
+                uploadBtn.textContent = t('push.upload_done') || 'Done';
+                setTimeout(() => { if (uploadBtn) { uploadBtn.disabled = false; applyI18n(); } }, 1500);
+              }
+              if (_curDirIndex === 0) browseDir(0, _curRelPath);
+              else loadSidebar();
+              resolve();
+            };
+            xhr.onerror = () => {
+              if (uploadBtn) { uploadBtn.disabled = false; applyI18n(); }
+              showToast('Upload failed', 'error');
+              resolve();
+            };
+            xhr.send(file);
+          });
+        });
+
+        if ((location.hash || '').replace(/^#/, '') === 'local') openPushView();
+      });
+    })();
+  </script>
+  <div id="sh-scrollbar"><div id="sh-scrollbar-thumb"></div></div>
+  <script>
+    (function() {
+      var _sb    = document.getElementById('sh-scrollbar');
+      var _thumb = document.getElementById('sh-scrollbar-thumb');
+      if (!_sb || !_thumb) return;
+      var _hideTimer = null, _isDragging = false, _dragStartY = 0, _dragScrollY = 0;
+      function _h() {
+        var total = document.documentElement.scrollHeight, vis = window.innerHeight;
+        return Math.max(40, (vis / total) * vis);
+      }
+      function _update() {
+        var total = document.documentElement.scrollHeight, vis = window.innerHeight;
+        if (total <= vis) { _sb.classList.remove('sh-sb-vis'); return; }
+        var h = _h(), top = (window.scrollY / (total - vis)) * (vis - h);
+        _thumb.style.height = h + 'px';
+        _thumb.style.top    = top + 'px';
+      }
+      function _show() {
+        _update();
+        if (document.documentElement.scrollHeight <= window.innerHeight) return;
+        _sb.classList.add('sh-sb-vis');
+        clearTimeout(_hideTimer);
+        if (!_isDragging) _hideTimer = setTimeout(function() { _sb.classList.remove('sh-sb-vis'); }, 1500);
+      }
+      window.addEventListener('scroll', _show, { passive: true });
+      window.addEventListener('resize', _update);
+      document.addEventListener('mousemove', function(e) {
+        if (e.clientX > window.innerWidth - 20) _show();
+      });
+      _thumb.addEventListener('mousedown', function(e) {
+        _isDragging = true; _dragStartY = e.clientY; _dragScrollY = window.scrollY;
+        _sb.classList.add('dragging'); clearTimeout(_hideTimer); e.preventDefault();
+      });
+      document.addEventListener('mousemove', function(e) {
+        if (!_isDragging) return;
+        var total = document.documentElement.scrollHeight, vis = window.innerHeight;
+        var ratio = (total - vis) / (vis - _h());
+        window.scrollTo(0, _dragScrollY + (e.clientY - _dragStartY) * ratio);
+      });
+      document.addEventListener('mouseup', function() {
+        if (!_isDragging) return;
+        _isDragging = false; _sb.classList.remove('dragging');
+        _hideTimer = setTimeout(function() { _sb.classList.remove('sh-sb-vis'); }, 1500);
+      });
+      _update();
+    })();
+  </script>
+  <div id="sh-confirm-modal" class="modal-overlay hidden" style="z-index:9999;">
+    <div class="modal-card" style="width:min(100%,360px);padding:24px 24px 20px;">
+      <p id="sh-confirm-msg" style="margin:0 0 20px;line-height:1.5;font-size:.95em;"></p>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" id="sh-confirm-cancel" class="btn-secondary" style="padding:7px 18px;font-size:.88em;" data-i18n="confirm.cancel">取消</button>
+        <button type="button" id="sh-confirm-ok"     class="btn-danger"    style="padding:7px 18px;font-size:.88em;" data-i18n="confirm.ok">确认</button>
+      </div>
+    </div>
+  </div>
+  <div id="sh-toast-wrap"></div>
 </body>
 
 </html>

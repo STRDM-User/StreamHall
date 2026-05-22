@@ -31,12 +31,60 @@
       box-sizing: border-box;
     }
 
+    html {
+      scrollbar-width: none;
+    }
+    html::-webkit-scrollbar {
+      display: none;
+    }
+    #sh-scrollbar {
+      position: fixed;
+      right: 4px;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      z-index: 9990;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    #sh-scrollbar.sh-sb-vis {
+      pointer-events: auto;
+      opacity: 1;
+    }
+    #sh-scrollbar.dragging {
+      pointer-events: auto;
+    }
+    #sh-scrollbar-thumb {
+      position: absolute;
+      right: 0;
+      width: 6px;
+      min-height: 40px;
+      border-radius: 999px;
+      background: rgba(78, 126, 232, 0.35);
+      transition: background 0.15s;
+      cursor: pointer;
+      user-select: none;
+    }
+    #sh-scrollbar-thumb:hover,
+    #sh-scrollbar.dragging #sh-scrollbar-thumb {
+      background: rgba(78, 126, 232, 0.65);
+    }
+    :root[data-theme="dark"] #sh-scrollbar-thumb {
+      background: rgba(147, 197, 253, 0.28);
+    }
+    :root[data-theme="dark"] #sh-scrollbar-thumb:hover,
+    :root[data-theme="dark"] #sh-scrollbar.dragging #sh-scrollbar-thumb {
+      background: rgba(147, 197, 253, 0.6);
+    }
+
     body {
       min-height: 100vh;
       margin: 0;
       background:
         linear-gradient(135deg, rgba(246, 249, 255, 0.98), rgba(255, 246, 250, 0.92) 50%, rgba(242, 255, 252, 0.96)),
         linear-gradient(90deg, rgba(78, 126, 232, 0.08), rgba(242, 99, 137, 0.07));
+      background-attachment: fixed;
       color: var(--text);
       font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
       overflow-x: hidden;
@@ -46,6 +94,7 @@
       background:
         linear-gradient(135deg, rgba(15, 20, 34, 0.98), rgba(28, 35, 54, 0.94) 52%, rgba(30, 24, 42, 0.98)),
         linear-gradient(90deg, rgba(25, 184, 177, 0.1), rgba(242, 99, 137, 0.08));
+      background-attachment: fixed;
       color: #d8deea;
     }
 
@@ -625,6 +674,33 @@
         grid-template-columns: 1fr;
       }
     }
+    #sh-load-more-wrap {
+      text-align: center;
+      padding: 16px 0 24px;
+    }
+    #sh-load-more-btn {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 28px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+    #sh-load-more-btn:hover {
+      color: var(--blue);
+      border-color: rgba(78, 126, 232, 0.4);
+      transform: translateY(-1px);
+    }
+    @keyframes sh-card-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .card-new {
+      animation: sh-card-in 0.28s ease-out both;
+    }
   </style>
 </head>
 
@@ -661,6 +737,9 @@
       <div id="loading-indicator" class="loader"></div>
       <p id="error-message" class="message hidden"></p>
       <div id="stream-list"></div>
+      <div id="sh-load-more-wrap" style="display:none;">
+        <button id="sh-load-more-btn"></button>
+      </div>
     </main>
 
     <footer class="site-footer">
@@ -693,6 +772,7 @@
         // empty states
         'empty.live': '当前没有可用的直播',
         'empty.archive': '当前没有可用的存档',
+        'list.load_more': '加载更多',
         // error
         'err.load': '加载失败',
         'err.fetch': '获取直播列表失败',
@@ -723,6 +803,7 @@
         // empty states
         'empty.live': 'No live streams available',
         'empty.archive': 'No archives available',
+        'list.load_more': 'Load more',
         // error
         'err.load': 'Failed to load',
         'err.fetch': 'Failed to fetch streams',
@@ -989,6 +1070,18 @@
 
       const labelKicker = (label) => label === 'ARCHIVE' ? t('kicker.archive') : t('kicker.live');
 
+      let _visibleCount = 0;
+      const _calcBatch = () => {
+        const w = window.innerWidth, h = window.innerHeight;
+        const cols = w > 900 ? 3 : w > 768 ? 2 : 1;
+        const switchEl = document.querySelector('.stream-switch');
+        const refBottom = switchEl ? switchEl.getBoundingClientRect().bottom : (w > 768 ? 200 : 160);
+        const listTop = refBottom + 24;
+        const rowH = 196;
+        const rows = Math.max(1, Math.floor((h - listTop - 300) / rowH));
+        return rows * cols;
+      };
+
       const renderStreams = () => {
         streamSectionTitle.textContent = labelTitle(activeStreamLabel);
         const kickerEl = document.getElementById('stream-section-kicker');
@@ -1004,9 +1097,12 @@
         if (!streams.length) {
           errorMessage.textContent = emptyText(activeStreamLabel);
           errorMessage.classList.remove('hidden');
+          document.getElementById('sh-load-more-wrap').style.display = 'none';
           return;
         }
-        streamList.innerHTML = streams.map(stream => {
+        if (_visibleCount === 0) _visibleCount = _calcBatch();
+        const visStreams = streams.slice(0, _visibleCount);
+        streamList.innerHTML = visStreams.map(stream => {
           const label = normalizeLabel(stream.stream_label);
           return `
             <a href="player.html?id=${encodeURIComponent(stream.id)}" class="card">
@@ -1024,6 +1120,16 @@
             </a>
           `;
         }).join('');
+        const lmWrap = document.getElementById('sh-load-more-wrap');
+        const lmBtn  = document.getElementById('sh-load-more-btn');
+        if (lmWrap && lmBtn) {
+          if (streams.length > _visibleCount) {
+            lmBtn.textContent = t('list.load_more');
+            lmWrap.style.display = '';
+          } else {
+            lmWrap.style.display = 'none';
+          }
+        }
       };
 
       streamSwitchButtons.forEach(btn => {
@@ -1034,9 +1140,22 @@
           localStorage.setItem('home_stream_label', activeStreamLabel);
           streamList.classList.add('is-switching');
           window.setTimeout(() => {
+            _visibleCount = 0;
             renderStreams();
             window.requestAnimationFrame(() => streamList.classList.remove('is-switching'));
           }, 140);
+        });
+      });
+
+      document.getElementById('sh-load-more-btn')?.addEventListener('click', () => {
+        const oldCount = _visibleCount;
+        _visibleCount += _calcBatch();
+        renderStreams();
+        streamList.querySelectorAll('.card').forEach((card, i) => {
+          if (i >= oldCount) {
+            card.classList.add('card-new');
+            card.style.animationDelay = `${(i - oldCount) * 50}ms`;
+          }
         });
       });
 
@@ -1064,6 +1183,54 @@
         loadingIndicator.classList.add('hidden');
       }
     });
+  </script>
+  <div id="sh-scrollbar"><div id="sh-scrollbar-thumb"></div></div>
+  <script>
+    (function() {
+      var _sb    = document.getElementById('sh-scrollbar');
+      var _thumb = document.getElementById('sh-scrollbar-thumb');
+      if (!_sb || !_thumb) return;
+      var _hideTimer = null, _isDragging = false, _dragStartY = 0, _dragScrollY = 0;
+      function _h() {
+        var total = document.documentElement.scrollHeight, vis = window.innerHeight;
+        return Math.max(40, (vis / total) * vis);
+      }
+      function _update() {
+        var total = document.documentElement.scrollHeight, vis = window.innerHeight;
+        if (total <= vis) { _sb.classList.remove('sh-sb-vis'); return; }
+        var h = _h(), top = (window.scrollY / (total - vis)) * (vis - h);
+        _thumb.style.height = h + 'px';
+        _thumb.style.top    = top + 'px';
+      }
+      function _show() {
+        _update();
+        if (document.documentElement.scrollHeight <= window.innerHeight) return;
+        _sb.classList.add('sh-sb-vis');
+        clearTimeout(_hideTimer);
+        if (!_isDragging) _hideTimer = setTimeout(function() { _sb.classList.remove('sh-sb-vis'); }, 1500);
+      }
+      window.addEventListener('scroll', _show, { passive: true });
+      window.addEventListener('resize', _update);
+      document.addEventListener('mousemove', function(e) {
+        if (e.clientX > window.innerWidth - 20) _show();
+      });
+      _thumb.addEventListener('mousedown', function(e) {
+        _isDragging = true; _dragStartY = e.clientY; _dragScrollY = window.scrollY;
+        _sb.classList.add('dragging'); clearTimeout(_hideTimer); e.preventDefault();
+      });
+      document.addEventListener('mousemove', function(e) {
+        if (!_isDragging) return;
+        var total = document.documentElement.scrollHeight, vis = window.innerHeight;
+        var ratio = (total - vis) / (vis - _h());
+        window.scrollTo(0, _dragScrollY + (e.clientY - _dragStartY) * ratio);
+      });
+      document.addEventListener('mouseup', function() {
+        if (!_isDragging) return;
+        _isDragging = false; _sb.classList.remove('dragging');
+        _hideTimer = setTimeout(function() { _sb.classList.remove('sh-sb-vis'); }, 1500);
+      });
+      _update();
+    })();
   </script>
 </body>
 

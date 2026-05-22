@@ -13,6 +13,14 @@ services:
       SECRET_KEY: "change-this-secret"
       DATABASE_URL: "postgresql://streamhall:streamhall_pg_password@postgres:5432/streamhall"
       TZ: "UTC"
+      RTMP_HOST: "srs"
+      # Comma-separated list of video directories (optional label:path format)
+      # Example for multiple dirs: "movies:/app/media/movies,anime:/app/media/anime"
+      VIDEOS_DIRS: "/app/videos"
+    volumes:
+      - ./videos:/app/videos
+      # Mount additional directories as needed:
+      # - /local/path:/app/media/label
 
   postgres:
     image: postgres:16-alpine

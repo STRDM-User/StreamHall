@@ -32,7 +32,8 @@
 - **Admin panel** - Add, edit, reorder, enable/disable streams; manage sources; drag-and-drop ordering
 - **Viewer analytics** - Session tracking, unique visitors, peak concurrent viewers, average watch duration, device / browser / OS / geography breakdown, real-time dashboard, CSV export
 - **Telegram notifications** - Per-stream push messages on stream start and stop
-- **Stream push** - SRS RTMP publishing helpers, hidden HLS route proxy so real stream keys are never exposed publicly
+- **Stream push** - Local file browser with per-file and per-folder RTMP push management; multi-file folder push with independent stream keys; inline push status and detail modal; remote RTMP push config for external encoders; hidden HLS route proxy (`/h/<slug>`) so real stream keys are never exposed publicly
+- **VOD / file serving** - Signed `/video/` URLs with HTTP Range support (seek-capable); publish any local video file or folder as an archive stream directly from the file browser
 - **HLS proxy** - Signed `/proxy/hls/` routes for cross-origin HLS playback
 - **API key auth** - Generate per-key tokens in the admin panel for programmatic access to all admin and analytics endpoints
 
@@ -90,6 +91,17 @@ StreamHall initial admin password: <random-password>
 docker compose pull && docker compose up -d
 ```
 
+**Resetting a forgotten admin password**
+
+```bash
+docker exec streamhall-postgres psql -U streamhall -d streamhall \
+  -c "DELETE FROM site_settings WHERE key='admin_password_hash';"
+docker restart streamhall
+docker logs streamhall
+```
+
+Deleting the hash causes StreamHall to generate a new random password on the next startup and print it to the log.
+
 <div align="right">
 
 [![][back-to-top]](#readme-top)
@@ -138,9 +150,37 @@ Set these environment variables in `docker-compose.yml`:
 | `STREAM_PROBE_TIMEOUT` | `4` | No | Seconds before aborting a stream URL probe |
 | `STREAM_MONITOR_INTERVAL` | `10` | No | Seconds between stream liveness checks |
 | `TELEGRAM_TIMEOUT` | `6` | No | Seconds before aborting a Telegram API call |
+| `RTMP_HOST` | `srs` | No | Hostname of the SRS container used for local push jobs |
+| `VIDEOS_DIRS` | *(unset)* | No | Comma-separated list of directories exposed in the file browser. Optionally prefix each path with a label: `label:/app/path`. Multiple entries: `movies:/app/movies,shows:/app/shows` |
 
 > [!WARNING]
 > Always change `SECRET_KEY` and `POSTGRES_PASSWORD` before exposing StreamHall to a network. The defaults are intentionally weak placeholders.
+
+**Mounting video directories for Local Push**
+
+*Method 1 — single base directory, multiple sources as subdirectories:*
+
+Mount multiple host paths under one container base path. The file browser shows them as subdirectories.
+
+```yaml
+environment:
+  VIDEOS_DIRS: "/app/videos"
+volumes:
+  - ./videos:/app/videos/local
+  - /your/media/path:/app/videos/external
+```
+
+*Method 2 — multiple labeled top-level directories:*
+
+Each path is listed as a separate labeled root entry in the file browser.
+
+```yaml
+environment:
+  VIDEOS_DIRS: "/app/videos,external:/app/media/external"
+volumes:
+  - ./videos:/app/videos
+  - /your/media/path:/app/media/external
+```
 
 <div align="right">
 
@@ -176,7 +216,9 @@ RTMP server:  rtmp://HOST:1935/live
 Stream key:   your-stream-key
 ```
 
-The admin panel's **Stream Setup** section generates a hidden public HLS URL (`/h/<slug>/...`) that routes through nginx on port `8889`, keeping the real stream key out of the public URL.
+The admin panel's **Local Push** section provides a file browser for your media directory. Select any video file to push it via RTMP with a custom stream key, or select a folder to push all contained videos simultaneously with independent stream keys. Push status is shown inline per file; a detail modal gives real-time duration, copy addresses, and stop controls.
+
+The hidden public HLS URL (`/h/<slug>/...`) routes through nginx on port `8889`, keeping the real stream key out of the public URL.
 
 > [!NOTE]
 > The RTMP host field accepts an optional port, e.g. `live.example.com:1935`. Do not hard-code `:1935` if you use a non-standard port.
@@ -202,6 +244,7 @@ The admin panel's **Stream Setup** section generates a hidden public HLS URL (`/
 | `GET` | `/api?action=site_settings` | Site title, description, branding |
 | `GET` | `/api?action=get_player_data&id=<public_id>` | Player sources and metadata |
 | `POST` | `/api?action=verify_password` | Verify a stream password |
+| `GET` | `/video/<token>/<payload>` | Signed VOD endpoint with HTTP Range support |
 
 ### Admin Endpoints
 
@@ -222,6 +265,10 @@ The admin panel's **Stream Setup** section generates a hidden public HLS URL (`/
 | `GET` | `/api?action=list_api_keys` | List API keys (tokens not returned) |
 | `POST` | `/api?action=create_api_key` | Create a key - token returned once |
 | `POST` | `/api?action=delete_api_key` | Revoke a key by `id` |
+| `GET` | `/api?action=list_pushes` | List active push jobs |
+| `POST` | `/api?action=start_push` | Start an RTMP push job for a file |
+| `POST` | `/api?action=stop_push` | Stop a push job by stream key |
+| `GET` | `/api?action=list_folder_videos` | List playable files in a directory (with signed URLs) |
 
 ### Analytics Endpoints
 
