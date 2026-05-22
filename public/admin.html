@@ -2825,6 +2825,7 @@
         loadStreams();
         const view = (location.hash || '').replace(/^#/, '') || localStorage.getItem('admin_active_view') || 'dashboard';
         if (view === 'dashboard') document.dispatchEvent(new CustomEvent('admin:enter-dashboard'));
+        if (view === 'local') document.dispatchEvent(new CustomEvent('admin:enter-local'));
       };
 
       apiCall('session').then(res => {
@@ -5538,6 +5539,7 @@
       document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('[data-admin-view-target="local"]')
           ?.addEventListener('click', openPushView);
+        document.addEventListener('admin:enter-local', openPushView);
 
         document.querySelectorAll('.admin-menu-btn:not([data-admin-view-target="local"]), .admin-sub-btn')
           .forEach(btn => btn.addEventListener('click', stopJobPolling));
@@ -5729,7 +5731,7 @@
           });
         });
 
-        if ((location.hash || '').replace(/^#/, '') === 'local') openPushView();
+        if (((location.hash || '').replace(/^#/, '') || localStorage.getItem('admin_active_view')) === 'local') openPushView();
       });
     })();
   </script>
