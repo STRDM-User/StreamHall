@@ -219,6 +219,10 @@
       padding: 10px;
     }
 
+    #admin-menu-toggle { display: none; }
+    #push-sidebar-toggle { display: none; }
+    #push-browser-layout { align-items: flex-start; }
+
     .admin-menu-btn {
       border: 1px solid transparent;
       border-radius: 6px;
@@ -364,6 +368,15 @@
       outline: none;
     }
 
+    select {
+      appearance: none;
+      padding-right: 34px !important;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+      background-repeat: no-repeat !important;
+      background-position: right 11px center !important;
+      background-size: 16px 16px !important;
+    }
+
     textarea {
       resize: vertical;
     }
@@ -374,6 +387,101 @@
       gap: 8px;
       align-items: start;
       margin-bottom: 10px;
+    }
+
+    .link-remove-btn {
+      align-self: start;
+      margin-top: 0;
+      min-height: 42px;
+    }
+
+    .link-row .link-drm-config {
+      grid-column: 2 / -2;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(100, 116, 139, 0.06);
+      overflow: hidden;
+    }
+
+    .link-row .link-drm-config > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 11px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 900;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .link-row .link-drm-config > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .link-row .link-drm-config > summary::after {
+      content: "DRM";
+      border-radius: 999px;
+      padding: 2px 7px;
+      background: var(--line);
+      color: var(--text);
+      font-size: 0.68rem;
+      letter-spacing: 0.04em;
+    }
+
+    .link-row .link-drm-grid {
+      display: grid;
+      grid-template-columns: 0.7fr 1.5fr;
+      gap: 8px;
+      padding: 0 11px 11px;
+    }
+
+    .link-row .link-drm-grid textarea {
+      min-height: 68px;
+    }
+
+    .link-row .link-drm-wide {
+      grid-column: 1 / -1;
+    }
+
+    .link-drm-list {
+      display: grid;
+      gap: 8px;
+      padding: 0 11px 11px;
+    }
+
+    .drm-config-row {
+      display: grid;
+      grid-template-columns: 0.7fr 1.4fr 1.2fr auto;
+      gap: 8px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .drm-config-row textarea {
+      min-height: 58px;
+    }
+
+    .drm-config-row .l-drm-type {
+      padding-right: 34px !important;
+    }
+
+    .drm-remove-btn {
+      align-self: start;
+      width: 42px;
+      height: 42px;
+      min-width: 42px;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .link-drm-actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 0 11px 11px;
     }
 
     .nav-link-row {
@@ -867,22 +975,89 @@
         grid-template-columns: 1fr;
       }
 
+      .link-row .link-drm-config,
+      .link-row .link-drm-wide {
+        grid-column: 1 / -1;
+      }
+
+      .link-row .link-drm-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .drm-config-row {
+        grid-template-columns: 1fr;
+      }
+
       .admin-layout {
         grid-template-columns: 1fr;
       }
 
+      #admin-menu-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 10px 13px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--fg);
+        font-size: inherit;
+        cursor: pointer;
+        text-align: left;
+      }
+      #admin-menu-toggle .group-arrow {
+        transition: transform 0.2s ease;
+      }
+      .admin-menu.mobile-open #admin-menu-toggle .group-arrow {
+        transform: rotate(180deg);
+      }
       .admin-menu {
-        position: static;
-        display: grid;
-        grid-template-columns: repeat(5, minmax(118px, 1fr));
-        overflow-x: auto;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 16px;
+        overflow: visible;
+      }
+      .admin-menu > .admin-menu-btn,
+      .admin-menu > .admin-menu-group {
+        display: none;
+      }
+      .admin-menu.mobile-open #admin-menu-toggle {
+        margin-bottom: 4px;
+      }
+      .admin-menu.mobile-open > .admin-menu-btn,
+      .admin-menu.mobile-open > .admin-menu-group {
+        display: flex;
+        width: 100%;
       }
 
-      .admin-menu-btn {
-        text-align: center;
+      #push-browser-layout { flex-direction: column; align-items: stretch; }
+      #push-sidebar-wrap { width: 100%; }
+      #push-sidebar-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 10px 13px;
+        margin-bottom: 0;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--fg);
+        font-size: inherit;
+        cursor: pointer;
+        text-align: left;
       }
-      .admin-menu-group-btn { justify-content:center; }
-      .admin-sub-btn { text-align:center; padding-left:13px; }
+      #push-sidebar-toggle .group-arrow { transition: transform 0.2s ease; }
+      #push-sidebar-wrap.sidebar-open #push-sidebar-toggle .group-arrow { transform: rotate(180deg); }
+      #push-sidebar { display: none !important; }
+      #push-sidebar-wrap.sidebar-open #push-sidebar {
+        display: flex !important;
+        width: 100% !important;
+        margin-top: 6px;
+      }
 
       .stream-row {
         align-items: flex-start;
@@ -1008,6 +1183,11 @@
     .modal-card-wide { width:min(100%,clamp(640px,80vw,1080px)); max-height:90vh; overflow-y:auto; padding:26px; }
     .stream-stat-summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:14px 0 18px; }
     @media(max-width:600px) { .stream-stat-summary-grid { grid-template-columns:repeat(2,1fr); } }
+    .fb-row { min-width:0; }
+    @media(max-width:600px) {
+      .fb-row { flex-wrap:wrap; }
+      .fb-actions { width:100%; justify-content:flex-end; margin-top:4px; }
+    }
     .stream-stat-mini-card { border:1px solid var(--line); border-radius:7px; padding:12px 14px; }
     .stream-stat-mini-lbl { font-size:.72rem; font-weight:800; color:var(--muted); text-transform:uppercase; }
     .stream-stat-mini-val { font-size:1.55rem; font-weight:900; margin:3px 0 1px; }
@@ -1112,6 +1292,10 @@
 
     <div class="admin-layout">
       <aside class="admin-menu" aria-label="Admin sidebar menu">
+        <button type="button" id="admin-menu-toggle" aria-label="Toggle menu">
+          <span id="admin-menu-toggle-label">&#9776;</span>
+          <span class="group-arrow" style="margin-left:auto;">&#9662;</span>
+        </button>
         <button type="button" class="admin-menu-btn active" data-admin-view-target="dashboard" data-i18n="menu.dashboard">数据看板</button>
         <div class="admin-menu-group open" id="records-group">
           <button type="button" class="admin-menu-group-btn" id="records-group-toggle"><span data-i18n="menu.streams">直播列表</span> <span class="group-arrow">▾</span></button>
@@ -1543,8 +1727,11 @@
         </div>
         <button type="button" id="upload-video-btn" class="btn-primary" data-i18n="btn.upload_video">上传视频</button>
       </div>
-      <div style="display:flex;gap:16px;align-items:flex-start;">
-        <div id="push-sidebar" style="width:140px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;"></div>
+      <div id="push-browser-layout" style="display:flex;gap:16px;">
+        <div id="push-sidebar-wrap" style="flex-shrink:0;">
+          <button type="button" id="push-sidebar-toggle"><span data-i18n="push.dir_label">目录</span><span class="group-arrow" style="margin-left:auto;">&#9662;</span></button>
+          <div id="push-sidebar" style="width:140px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
         <div style="flex:1;min-width:0;">
           <div id="push-breadcrumb" style="margin-bottom:10px;font-size:.85em;color:var(--muted);"></div>
           <div style="position:relative;margin-bottom:10px;">
@@ -1806,6 +1993,12 @@
         'ph.link_url':      '链接 (m3u8/flv/mpd)',
         'ph.key_aes':       'AES-128 Key Hex，可多行: main-video=hex',
         'ph.clearkey':      'ClearKey 信息，如 {"kid":"key"}',
+        'ph.license_url':   'DRM License URL',
+        'ph.license_url_widevine':'Widevine License URL',
+        'ph.license_url_fairplay':'FairPlay License URL',
+        'ph.certificate_url':'FairPlay Certificate URL',
+        'ph.license_headers':'License Headers JSON 或 Header: Value 多行',
+        'ph.pssh':          'PSSH，可选，用于记录或诊断',
         // hints
         'hint.nav_links':   '留空则不显示菜单链接。支持站内锚点如 #stream-list，或完整 http/https 链接。',
         'hint.pw_change':   '修改后台登录密码后，当前会话会自动退出。',
@@ -1814,6 +2007,8 @@
         'hint.obs_rtmp':    '推流端使用 RTMP 推流到服务器，播放器使用 SRS 输出的 HLS 或 FLV 地址。',
         'hint.obs_routes':  '新增自定义推流码后，系统会生成不可反推的公开 HLS/FLV 地址。推流端仍使用真实推流码推流。',
         'hint.links':       '填写格式：视角名称 | 类型 | 播放链接 | Key Override | ClearKey 信息',
+        'drm.config':       'DRM 播放授权',
+        'drm.none':         '无 DRM',
         'hint.footer_example': '示例：## 联系方式\n- [项目主页](https://example.com)',
         // TG
         'tg.live_section':  '直播',   'tg.live_label':     'LIVE',
@@ -1852,6 +2047,7 @@
         'probe.detected':   '已检测到推流信息',
         'probe.waiting':    '等待自动检测...',
         'probe.closed':     '直播已关闭',
+        'probe.drm_config_missing':'检测到 DRM 流，但缺少匹配的 DRM 配置',
         // status messages
         'msg.site_saved':   '网站设置已保存',
         'msg.site_err':     '加载网站设置失败',
@@ -1935,6 +2131,7 @@
         'push.copy_hls':                  '复制播放地址',
         'push.add_stream':                '添加直播',
         'push.copied':                    '已复制',
+        'push.dir_label':                 '目录',
         'push.dir_empty':                 '此目录为空',
         'push.publish_archive':           '发布归档',
         'push.folder':                    '文件夹',
@@ -2196,6 +2393,12 @@
         'ph.link_url':      'URL (m3u8/flv/mpd)',
         'ph.key_aes':       'AES-128 Key Hex, multi-line: main-video=hex',
         'ph.clearkey':      'ClearKey JSON, e.g. {"kid":"key"}',
+        'ph.license_url':   'DRM License URL',
+        'ph.license_url_widevine':'Widevine License URL',
+        'ph.license_url_fairplay':'FairPlay License URL',
+        'ph.certificate_url':'FairPlay Certificate URL',
+        'ph.license_headers':'License Headers JSON or Header: Value lines',
+        'ph.pssh':          'PSSH, optional note for diagnostics',
         // hints
         'hint.nav_links':   'Leave empty to hide nav links. Supports anchors like #stream-list or full URLs.',
         'hint.pw_change':   'Changing the admin password will log you out of the current session.',
@@ -2204,6 +2407,8 @@
         'hint.obs_rtmp':    'The encoder pushes via RTMP to the server; the player uses HLS or FLV from SRS.',
         'hint.obs_routes':  'Adding a custom stream key generates a public HLS/FLV URL that cannot be reverse-engineered.',
         'hint.links':       'Format: name | type | URL | Key Override | ClearKey',
+        'drm.config':       'DRM license',
+        'drm.none':         'No DRM',
         'hint.footer_example': 'Example: ## Contact\n- [Project page](https://example.com)',
         // TG
         'tg.live_section':  'Live',    'tg.live_label':    '直播',
@@ -2242,6 +2447,7 @@
         'probe.detected':   'Stream detected',
         'probe.waiting':    'Waiting for detection...',
         'probe.closed':     'Stream disabled',
+        'probe.drm_config_missing':'DRM stream detected, but matching DRM config is missing',
         // status messages
         'msg.site_saved':   'Settings saved',
         'msg.site_err':     'Failed to load settings',
@@ -2325,6 +2531,7 @@
         'push.copy_hls':                  'Copy HLS URL',
         'push.add_stream':                'Add Stream',
         'push.copied':                    'Copied',
+        'push.dir_label':                 'Dirs',
         'push.dir_empty':                 'Directory is empty',
         'push.publish_archive':           'Publish to Archive',
         'push.folder':                    'Folder',
@@ -2508,6 +2715,15 @@
       adminMenuButtons.forEach(btn => {
         btn.addEventListener('click', () => {
           if (btn.dataset.adminViewTarget) switchAdminView(btn.dataset.adminViewTarget);
+        });
+      });
+      const _adminMenuEl = document.querySelector('.admin-menu');
+      document.getElementById('admin-menu-toggle')?.addEventListener('click', () => {
+        _adminMenuEl?.classList.toggle('mobile-open');
+      });
+      document.querySelectorAll('.admin-menu-btn, .admin-sub-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (window.innerWidth <= 900) _adminMenuEl?.classList.remove('mobile-open');
         });
       });
       document.getElementById('records-group-toggle')?.addEventListener('click', () => {
@@ -2702,10 +2918,19 @@
         if (state !== 'is-checking') el.dataset.probeComplete = '1';
       };
 
-      const probeUrl = async (url, type = '') => {
+      const getRowDrmConfigs = (row) => Array.from(row.querySelectorAll('.drm-config-row')).map(drmRow => ({
+        drmType: drmRow.querySelector('.l-drm-type')?.value || '',
+        licenseUrl: drmRow.querySelector('.l-license-url')?.value.trim() || '',
+        certificateUrl: drmRow.querySelector('.l-certificate-url')?.value.trim() || '',
+        licenseHeaders: drmRow.querySelector('.l-license-headers')?.value.trim() || '',
+        pssh: drmRow.querySelector('.l-pssh')?.value.trim() || ''
+      })).filter(config => config.drmType && config.licenseUrl);
+
+      const probeUrl = async (url, type = '', drmConfigs = []) => {
         const res = await apiCall('check_stream_url', {
           url,
-          type: inferLinkType(url, type)
+          type: inferLinkType(url, type),
+          drmConfigs
         });
         return res.data || { valid: false, message: t('probe.no_info') };
       };
@@ -2725,12 +2950,12 @@
         row.dataset.probeActive = '1';
         if (!silent) setProbeStatus(statusEl, 'is-checking', t('probe.detecting'));
         try {
-          const result = await probeUrl(url, type);
+          const result = await probeUrl(url, type, getRowDrmConfigs(row));
           if (!row.isConnected || row.dataset.probeToken !== token) return;
           setProbeStatus(
             statusEl,
             result.valid ? 'is-online' : 'is-offline',
-            result.valid ? t('probe.detected') : t('probe.no_info')
+            result.valid ? t('probe.detected') : (t('probe.' + result.code) || t('probe.no_info'))
           );
         } catch (e) {
           if (row.isConnected && row.dataset.probeToken === token) {
@@ -3657,13 +3882,29 @@
 
       els.form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const links = Array.from(els.linksContainer.children).map(row => ({
-          name: row.querySelector('.l-name').value,
-          type: row.querySelector('.l-type').value,
-          url: row.querySelector('.l-url').value,
-          key: row.querySelector('.l-key').value.trim(),
-          clearkey: row.querySelector('.l-clearkey').value.trim()
-        })).filter(l => l.name && l.url);
+        const links = Array.from(els.linksContainer.children).map(row => {
+          const drmConfigs = Array.from(row.querySelectorAll('.drm-config-row')).map(drmRow => ({
+            drmType: drmRow.querySelector('.l-drm-type')?.value || '',
+            licenseUrl: drmRow.querySelector('.l-license-url')?.value.trim() || '',
+            certificateUrl: drmRow.querySelector('.l-certificate-url')?.value.trim() || '',
+            licenseHeaders: drmRow.querySelector('.l-license-headers')?.value.trim() || '',
+            pssh: drmRow.querySelector('.l-pssh')?.value.trim() || ''
+          })).filter(config => config.drmType && config.licenseUrl);
+          const firstDrm = drmConfigs[0] || {};
+          return {
+            name: row.querySelector('.l-name').value,
+            type: row.querySelector('.l-type').value,
+            url: row.querySelector('.l-url').value,
+            key: row.querySelector('.l-key').value.trim(),
+            clearkey: row.querySelector('.l-clearkey').value.trim(),
+            drmConfigs,
+            drmType: firstDrm.drmType || '',
+            licenseUrl: firstDrm.licenseUrl || '',
+            certificateUrl: firstDrm.certificateUrl || '',
+            licenseHeaders: firstDrm.licenseHeaders || '',
+            pssh: firstDrm.pssh || ''
+          };
+        }).filter(l => l.name && l.url);
 
         const payload = {
           id: els.idInput.value,
@@ -3686,7 +3927,14 @@
       let _linkDragSrc = null;
       let _linkDragFromHandle = false;
 
-      const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '') => {
+      const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '', drmType = '', licenseUrl = '', licenseHeaders = '', pssh = '', certificateUrl = '', drmConfigs = []) => {
+        const rawDrmType = String(drmType || '').toLowerCase();
+        const normalizedDrmType = rawDrmType === 'widevine' || rawDrmType === 'fairplay' ? rawDrmType : '';
+        const normalizedDrmConfigs = Array.isArray(drmConfigs) && drmConfigs.length
+          ? drmConfigs
+          : (normalizedDrmType || licenseUrl || certificateUrl || licenseHeaders || pssh)
+            ? [{ drmType: normalizedDrmType, licenseUrl, certificateUrl, licenseHeaders, pssh }]
+            : [];
         const div = document.createElement('div');
         div.className = 'link-row';
         div.draggable = true;
@@ -3705,9 +3953,77 @@
           </div>
           <textarea class="l-key" rows="2" placeholder="${t('ph.key_aes')}">${escapeHtml(key)}</textarea>
           <textarea class="l-clearkey" rows="2" placeholder="${t('ph.clearkey')}">${escapeHtml(clearkey)}</textarea>
-          <button type="button" class="btn-danger" onclick="this.parentElement.remove()">×</button>
+          <details class="link-drm-config" ${normalizedDrmConfigs.length ? 'open' : ''}>
+            <summary>${t('drm.config')}</summary>
+            <div class="link-drm-list"></div>
+            <div class="link-drm-actions">
+              <button type="button" class="btn-secondary add-drm-config-btn" style="padding:6px 10px;font-size:.82em;">+ DRM</button>
+            </div>
+          </details>
+          <button type="button" class="btn-danger link-remove-btn" onclick="this.parentElement.remove()">×</button>
         `;
         els.linksContainer.appendChild(div);
+        const drmList = div.querySelector('.link-drm-list');
+        const addDrmConfigUI = (config = {}) => {
+          const drmTypeValue = String(config.drmType || config.drm_type || '').toLowerCase();
+          const selectedType = drmTypeValue === 'fairplay' || drmTypeValue === 'widevine' ? drmTypeValue : '';
+          const row = document.createElement('div');
+          row.className = 'drm-config-row';
+          row.innerHTML = `
+            <select class="l-drm-type">
+              <option value="" ${selectedType === '' ? 'selected' : ''}>${t('drm.none')}</option>
+              <option value="widevine" ${selectedType === 'widevine' ? 'selected' : ''}>Widevine</option>
+              <option value="fairplay" ${selectedType === 'fairplay' ? 'selected' : ''}>FairPlay</option>
+            </select>
+            <input class="l-license-url drm-field-enabled" placeholder="${t('ph.license_url')}" value="${escapeAttr(config.licenseUrl || config.license_url || '')}">
+            <input class="l-certificate-url drm-field-fairplay" placeholder="${t('ph.certificate_url')}" value="${escapeAttr(config.certificateUrl || config.certificate_url || '')}">
+            <button type="button" class="btn-danger remove-drm-config-btn drm-remove-btn">×</button>
+            <textarea class="l-license-headers link-drm-wide drm-field-enabled" rows="2" placeholder="${t('ph.license_headers')}">${escapeHtml(config.licenseHeaders || config.license_headers || '')}</textarea>
+            <textarea class="l-pssh link-drm-wide drm-field-widevine" rows="2" placeholder="${t('ph.pssh')}">${escapeHtml(config.pssh || '')}</textarea>
+          `;
+          drmList.appendChild(row);
+          const drmTypeSelect = row.querySelector('.l-drm-type');
+          const licenseInput = row.querySelector('.l-license-url');
+          const syncDrmPlaceholders = () => {
+            const type = drmTypeSelect?.value || '';
+            if (licenseInput) {
+              licenseInput.placeholder = type === 'fairplay'
+                ? t('ph.license_url_fairplay')
+                : type === 'widevine'
+                  ? t('ph.license_url_widevine')
+                  : t('ph.license_url');
+            }
+            row.querySelectorAll('.drm-field-enabled').forEach(el => {
+              el.style.display = type ? '' : 'none';
+            });
+            row.querySelectorAll('.drm-field-fairplay').forEach(el => {
+              el.style.display = type === 'fairplay' ? '' : 'none';
+            });
+            row.querySelectorAll('.drm-field-widevine').forEach(el => {
+              el.style.display = type === 'widevine' ? '' : 'none';
+            });
+          };
+          syncDrmPlaceholders();
+          const refreshProbe = () => scheduleLinkRowCheck(div);
+          drmTypeSelect?.addEventListener('change', () => {
+            syncDrmPlaceholders();
+            refreshProbe();
+          });
+          row.querySelectorAll('input, textarea').forEach(input => {
+            input.addEventListener('input', refreshProbe);
+            input.addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
+          });
+          row.querySelector('.remove-drm-config-btn')?.addEventListener('click', () => {
+            row.remove();
+            refreshProbe();
+          });
+        };
+        normalizedDrmConfigs.forEach(config => addDrmConfigUI(config));
+        div.querySelector('.add-drm-config-btn')?.addEventListener('click', () => {
+          div.querySelector('.link-drm-config')?.setAttribute('open', '');
+          addDrmConfigUI();
+          scheduleLinkRowCheck(div);
+        });
         div.querySelector('.l-url').addEventListener('input', () => scheduleLinkRowCheck(div));
         div.querySelector('.l-url').addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
         div.querySelector('.l-type').addEventListener('change', () => scheduleLinkRowCheck(div, 0));
@@ -3861,7 +4177,7 @@
           els.cancelBtn.classList.remove('hidden');
           els.linksContainer.innerHTML = '';
           const links = JSON.parse(stream.links_json || '[]');
-          links.forEach(l => addLinkUI(l.name, l.url, l.key, l.clearkey, l.type));
+          links.forEach(l => addLinkUI(l.name, l.url, l.key, l.clearkey, l.type, l.drmType || l.drm_type || '', l.licenseUrl || l.license_url || '', l.licenseHeaders || l.license_headers || '', l.pssh || '', l.certificateUrl || l.certificate_url || '', l.drmConfigs || l.drm_configs || []));
           if (links.length === 0) addLinkUI();
         } else {
           resetForm();
@@ -5181,6 +5497,7 @@
             btn.addEventListener('click', () => {
               _highlightSidebarBtn(sidebar, root.index);
               browseDir(root.index, '');
+              if (window.innerWidth <= 900) document.getElementById('push-sidebar-wrap')?.classList.remove('sidebar-open');
             });
             sidebar.appendChild(btn);
           });
@@ -5273,7 +5590,7 @@
                   (j.push_rel_path === childPath || j.push_rel_path.startsWith(childPath + '/')))
               : false;
             const folderBtns = (entry.has_playable || entry.has_video)
-              ? `<div style="display:flex;gap:6px;flex-shrink:0;" onclick="event.stopPropagation()">
+              ? `<div class="fb-actions" style="display:flex;gap:6px;" onclick="event.stopPropagation()">
                   ${entry.has_playable ? `<div style="display:flex;gap:0;"><button class="btn-secondary push-folder-publish-btn" data-dir-index="${dirIndex}" data-folder-rel-path="${_esc(childPath)}" data-folder-name="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;border-radius:6px 0 0 6px;">${_esc(t('push.publish_archive'))}</button><button class="btn-secondary push-folder-publish-existing-btn" data-dir-index="${dirIndex}" data-folder-rel-path="${_esc(childPath)}" data-folder-name="${_esc(entry.name)}" style="padding:4px 3px;font-size:.80em;border-left:1px solid rgba(255,255,255,.15);border-radius:0 6px 6px 0;">&#9662;</button></div>` : ''}
                   ${entry.has_video
                     ? (_folderHasJob
@@ -5281,9 +5598,9 @@
                       : `<button class="btn-primary push-folder-push-btn" data-dir-index="${dirIndex}" data-folder-rel-path="${_esc(childPath)}" data-folder-name="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;">${_esc(t('push.start'))}</button>`)
                     : ''}
                 </div>` : '';
-            html += `<div class="push-dir-row" data-idx="${dirIndex}" data-path="${_esc(childPath)}" style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;cursor:pointer;">
+            html += `<div class="push-dir-row fb-row" data-idx="${dirIndex}" data-path="${_esc(childPath)}" style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;cursor:pointer;">
               <span style="font-size:1.1em;">&#128193;</span>
-              <div style="font-weight:600;font-size:.9em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(entry.name)}</div>
+              <div style="font-weight:600;font-size:.9em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(entry.name)}</div>
               ${folderBtns}
             </div>`;
           } else {
@@ -5294,13 +5611,13 @@
             const _tagHtml = _ext
               ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:.7em;font-weight:700;letter-spacing:.04em;background:${_tagBg};color:#fff;">${_esc(_ext)}</span>`
               : '';
-            html += `<div style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;">
+            html += `<div class="fb-row" style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;">
               <span style="font-size:1.1em;">&#127916;</span>
               <div style="flex:1;min-width:0;">
                 <div style="font-weight:600;font-size:.9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${_esc(entry.name)}">${_esc(_stem)}</div>
                 <div style="font-size:.8em;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;">${_esc(fmtBytes(entry.size || 0))}${_tagHtml}</div>
               </div>
-              <div style="display:flex;gap:6px;flex-shrink:0;">
+              <div class="fb-actions" style="display:flex;gap:6px;">
                 ${entry.video_url ? `<div style="display:flex;gap:0;"><button class="btn-secondary push-publish-btn" data-video-url="${_esc(entry.video_url)}" data-filename="${_esc(entry.name)}" style="padding:4px 5px;font-size:.80em;border-radius:6px 0 0 6px;">${_esc(t('push.publish_archive'))}</button><button class="btn-secondary push-publish-existing-btn" data-video-url="${_esc(entry.video_url)}" data-filename="${_esc(entry.name)}" style="padding:4px 3px;font-size:.80em;border-left:1px solid rgba(255,255,255,.15);border-radius:0 6px 6px 0;">&#9662;</button></div>` : ''}
                 ${(() => { const _fj = _jobMap[`v|${dirIndex}|${relPath}|${entry.name}`] ?? null;
                   return _fj
@@ -5540,6 +5857,9 @@
         document.querySelector('[data-admin-view-target="local"]')
           ?.addEventListener('click', openPushView);
         document.addEventListener('admin:enter-local', openPushView);
+        document.getElementById('push-sidebar-toggle')?.addEventListener('click', () => {
+          document.getElementById('push-sidebar-wrap')?.classList.toggle('sidebar-open');
+        });
 
         document.querySelectorAll('.admin-menu-btn:not([data-admin-view-target="local"]), .admin-sub-btn')
           .forEach(btn => btn.addEventListener('click', stopJobPolling));
