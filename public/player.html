@@ -8,6 +8,7 @@
   <script src="/vendor/hls.min.js"></script>
   <script src="/vendor/flv.min.js"></script>
   <script src="/vendor/dash.all.min.js"></script>
+  <script src="/vendor/shaka-player.compiled.js"></script>
   <script src="/vendor/artplayer.js"></script>
   <script src="/vendor/artplayer-plugin-hls-control.js"></script>
   <style>
@@ -181,6 +182,11 @@
         flv_unsupported:  '当前浏览器不支持 FLV 播放',
         hls_unsupported:  '当前浏览器不支持 HLS 播放',
         dash_unavailable: 'DASH 播放组件未加载',
+        drm_unavailable:  '当前浏览器不支持此 DRM 播放',
+        drm_license_missing:'未配置 DRM License URL',
+        drm_certificate_missing:'未配置 FairPlay Certificate URL',
+        drm_playback_error:'DRM 授权播放失败',
+        drm_android_webview_unsupported:'当前内置浏览器不支持此 DRM 播放，请使用系统浏览器打开',
         quality:          '画质',
         // API error codes from server
         'err.stream_not_found':            '直播不存在',
@@ -209,6 +215,11 @@
         flv_unsupported:  'FLV playback is not supported in this browser',
         hls_unsupported:  'HLS playback is not supported in this browser',
         dash_unavailable: 'DASH player component not loaded',
+        drm_unavailable:  'This browser does not support the configured DRM playback',
+        drm_license_missing:'DRM License URL is not configured',
+        drm_certificate_missing:'FairPlay Certificate URL is not configured',
+        drm_playback_error:'DRM license playback failed',
+        drm_android_webview_unsupported:'This in-app browser does not support this DRM playback. Open it in your system browser.',
         quality:          'Quality',
         // API error codes from server
         'err.stream_not_found':            'Stream not found',
@@ -222,7 +233,7 @@
       },
     };
     const PLAYER_LANG = (localStorage.getItem('lang_pref') || 'zh') === 'en' ? 'en' : 'zh';
-    const t = key => (PLAYER_I18N[PLAYER_LANG] || PLAYER_I18N.zh)[key] || key;
+    const t = key => (PLAYER_I18N[PLAYER_LANG] || PLAYER_I18N.zh)[key] || PLAYER_I18N.en[key] || key;
 
     // Initialise static text in the HTML that cannot use data-i18n.
     document.getElementById('msg').textContent = t('loading');
@@ -322,6 +333,196 @@
         return acc;
       }, {});
       return Object.keys(clearkeys).length ? { 'org.w3.clearkey': { clearkeys } } : null;
+    }
+
+    function parseHeaderConfig(input) {
+      const text = String(input || '').trim();
+      if (!text) return {};
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return Object.entries(parsed).reduce((acc, [key, value]) => {
+            if (key && value !== undefined && value !== null) acc[key] = String(value);
+            return acc;
+          }, {});
+        }
+      } catch (e) {}
+      return text.split(/\n+/).reduce((acc, line) => {
+        const idx = line.indexOf(':');
+        if (idx > 0) {
+          const key = line.slice(0, idx).trim();
+          const value = line.slice(idx + 1).trim();
+          if (key && value) acc[key] = value;
+        }
+        return acc;
+      }, {});
+    }
+
+    function getFairPlayContentId(initData) {
+      const text = shaka.util.StringUtils.fromBytesAutoDetect(initData);
+      return shaka.util.FairPlayUtils.defaultGetContentId(text);
+    }
+
+    function transformFairPlayInitData(initData, initDataType, drmInfo) {
+      if (initDataType !== 'skd') return initData;
+      const contentId = getFairPlayContentId(initData);
+      return shaka.util.FairPlayUtils.initDataTransform(initData, contentId, drmInfo.serverCertificate);
+    }
+
+    function getDrmConfigs(link) {
+      const configs = Array.isArray(link?.drmConfigs) ? link.drmConfigs : Array.isArray(link?.drm_configs) ? link.drm_configs : [];
+      const normalized = configs.map(config => ({
+        drmType: String(config?.drmType || config?.drm_type || '').toLowerCase(),
+        licenseUrl: String(config?.licenseUrl || config?.license_url || '').trim(),
+        certificateUrl: String(config?.certificateUrl || config?.certificate_url || '').trim(),
+        licenseHeaders: String(config?.licenseHeaders || config?.license_headers || '').trim(),
+        pssh: String(config?.pssh || '').trim()
+      })).filter(config => (config.drmType === 'widevine' || config.drmType === 'fairplay') && config.licenseUrl);
+      if (normalized.length) return normalized;
+      const legacyType = String(link?.drmType || link?.drm_type || '').toLowerCase();
+      const legacyLicense = String(link?.licenseUrl || link?.license_url || '').trim();
+      if ((legacyType === 'widevine' || legacyType === 'fairplay') && legacyLicense) {
+        return [{
+          drmType: legacyType,
+          licenseUrl: legacyLicense,
+          certificateUrl: String(link?.certificateUrl || link?.certificate_url || '').trim(),
+          licenseHeaders: String(link?.licenseHeaders || link?.license_headers || '').trim(),
+          pssh: String(link?.pssh || '').trim()
+        }];
+      }
+      return [];
+    }
+
+    function browserPrefersFairPlay() {
+      const ua = navigator.userAgent || '';
+      const isSafari = /Safari/i.test(ua) && !/(Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPiOS)/i.test(ua);
+      return !!window.WebKitMediaKeys || isSafari;
+    }
+
+    function isAndroidRestrictedWebView() {
+      const ua = navigator.userAgent || '';
+      if (!/Android/i.test(ua)) return false;
+      return /Telegram/i.test(ua) || /; wv\)/i.test(ua) || /\bwv\b/i.test(ua);
+    }
+
+    function selectDrmConfig(link) {
+      const configs = getDrmConfigs(link);
+      if (!configs.length) return null;
+      if (browserPrefersFairPlay()) {
+        return configs.find(config => config.drmType === 'fairplay' && config.certificateUrl) || configs.find(config => config.drmType === 'fairplay') || null;
+      }
+      return configs.find(config => config.drmType === 'widevine') || null;
+    }
+
+    function linkUsesWidevine(link) {
+      return selectDrmConfig(link)?.drmType === 'widevine';
+    }
+
+    function linkUsesFairPlay(link) {
+      return selectDrmConfig(link)?.drmType === 'fairplay';
+    }
+
+    function linkUsesShakaDrm(link) {
+      return !!selectDrmConfig(link);
+    }
+
+    function linkHasDrmConfigs(link) {
+      return getDrmConfigs(link).length > 0;
+    }
+
+    function formatShakaError(error) {
+      if (!error) return t('drm_playback_error');
+      if (error.code === 6001 && isAndroidRestrictedWebView()) {
+        return t('drm_android_webview_unsupported');
+      }
+      const parts = [];
+      if (error.code !== undefined) parts.push(`code ${error.code}`);
+      if (error.category !== undefined) parts.push(`category ${error.category}`);
+      if (error.severity !== undefined) parts.push(`severity ${error.severity}`);
+      return parts.length ? `${t('drm_playback_error')} (${parts.join(', ')})` : t('drm_playback_error');
+    }
+
+    function installLiveDurationGuard(art) {
+      const root = art?.template?.$player;
+      if (!root) return () => {};
+      const fix = () => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        nodes.forEach(node => {
+          const text = node.nodeValue || '';
+          if (!text.includes(' / ')) return;
+          const fixed = text.replace(/\s+\/\s+\d{4,}:\d{2}:\d{2}/g, '');
+          if (fixed !== text) node.nodeValue = fixed;
+        });
+      };
+      const timer = window.setInterval(fix, 500);
+      fix();
+      return () => window.clearInterval(timer);
+    }
+
+    function installShakaQualityControl(art, player) {
+      const update = () => {
+        const tracks = player.getVariantTracks()
+          .filter(track => track.videoId !== null && track.videoId !== undefined)
+          .sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0));
+        const unique = [];
+        const seen = new Set();
+        tracks.forEach(track => {
+          const key = `${track.height || 0}-${Math.round((track.bandwidth || 0) / 1000)}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          unique.push(track);
+        });
+        if (!unique.length) return;
+        const active = unique.find(track => track.active) || tracks.find(track => track.active);
+        const autoLabel = 'Auto';
+        const selectedLabel = active?.height ? `${active.height}P` : autoLabel;
+        const selector = unique.map(track => ({
+          html: track.height ? `${track.height}P` : `${Math.round((track.bandwidth || 0) / 1000)}K`,
+          value: track.id,
+          default: !!track.active
+        }));
+        selector.push({
+          html: autoLabel,
+          value: 'auto',
+          default: !active
+        });
+        const onSelect = item => {
+          if (item.value === 'auto') {
+            player.configure({ abr: { enabled: true } });
+          } else {
+            const selected = player.getVariantTracks().find(track => String(track.id) === String(item.value));
+            if (selected) {
+              player.configure({ abr: { enabled: false } });
+              player.selectVariantTrack(selected, true);
+            }
+          }
+          window.setTimeout(update, 150);
+          return item.html;
+        };
+        art.setting.update({
+          name: 'shaka-quality',
+          html: t('quality'),
+          tooltip: selectedLabel,
+          width: 200,
+          selector,
+          onSelect
+        });
+        art.controls.update({
+          name: 'shaka-quality',
+          position: 'right',
+          index: 11,
+          html: selectedLabel,
+          style: { padding: '0 10px', marginRight: '10px' },
+          selector,
+          onSelect
+        });
+      };
+      player.addEventListener('variantchanged', update);
+      window.setTimeout(update, 0);
+      window.setTimeout(update, 800);
+      return update;
     }
 
     function getLinkType(link) {
@@ -604,6 +805,7 @@
           url: getPlaybackUrl(l),
           type: getLinkType(l)
         }));
+        const initialLink = activeLinks[0] || null;
 
         playerInstance = new Artplayer({
           container: '.artplayer-app',
@@ -612,6 +814,7 @@
           quality: quality,
           title: data.eventName,
           autoplay: true,
+          isLive: linkUsesShakaDrm(initialLink),
           volume: 0.5,
           autoSize: true,
           fullscreen: true,
@@ -631,9 +834,116 @@
               }
             },
             m3u8: function (video, url, art) {
-              if (Hls.isSupported()) {
+              const currentLink = activeLinks.find(l => l.url === url || getPlaybackUrl(l) === url);
+              if (linkHasDrmConfigs(currentLink) && !selectDrmConfig(currentLink)) {
+                art.notice.show = t('drm_unavailable');
+                return;
+              }
+              if (linkUsesShakaDrm(currentLink)) {
                 if (art.hls) art.hls.destroy();
-                const currentLink = activeLinks.find(l => l.url === url || getPlaybackUrl(l) === url);
+                if (window.shaka?.polyfill) shaka.polyfill.installAll();
+                if (!window.shaka || !shaka.Player || !shaka.Player.isBrowserSupported()) {
+                  art.notice.show = t('drm_unavailable');
+                  return;
+                }
+                const selectedDrm = selectDrmConfig(currentLink);
+                if (selectedDrm?.drmType === 'widevine' && isAndroidRestrictedWebView()) {
+                  art.notice.show = t('drm_android_webview_unsupported');
+                  return;
+                }
+                const licenseUrl = String(selectedDrm?.licenseUrl || '').trim();
+                if (!licenseUrl) {
+                  art.notice.show = t('drm_license_missing');
+                  return;
+                }
+                if (art.shaka) art.shaka.destroy().catch(() => {});
+                if (art.streamhallDurationGuard) art.streamhallDurationGuard();
+                art.streamhallDurationGuard = installLiveDurationGuard(art);
+                const player = new shaka.Player();
+                const headers = parseHeaderConfig(selectedDrm?.licenseHeaders || '');
+                const fairplay = selectedDrm?.drmType === 'fairplay';
+                const keySystem = fairplay ? 'com.apple.fps' : 'com.widevine.alpha';
+                const fairplayLegacyKeySystem = 'com.apple.fps.1_0';
+                const certificateUrl = String(selectedDrm?.certificateUrl || '').trim();
+                const servers = { [keySystem]: licenseUrl };
+                const advanced = {};
+                if (fairplay) {
+                  servers[fairplayLegacyKeySystem] = licenseUrl;
+                  advanced[keySystem] = {
+                    serverCertificateUri: certificateUrl,
+                    audioRobustness: '',
+                    videoRobustness: ''
+                  };
+                  advanced[fairplayLegacyKeySystem] = {
+                    serverCertificateUri: certificateUrl,
+                    audioRobustness: '',
+                    videoRobustness: ''
+                  };
+                } else {
+                  advanced[keySystem] = {
+                    audioRobustness: '',
+                    videoRobustness: '',
+                    persistentStateRequired: false,
+                    distinctiveIdentifierRequired: false
+                  };
+                }
+                const drmConfig = {
+                  preferredKeySystems: fairplay ? [keySystem, fairplayLegacyKeySystem] : [keySystem],
+                  servers,
+                  advanced
+                };
+                if (fairplay && !certificateUrl) {
+                  art.notice.show = t('drm_certificate_missing');
+                  return;
+                }
+                player.configure({
+                  drm: {
+                    ...drmConfig,
+                    ...(fairplay ? { initDataTransform: transformFairPlayInitData } : {})
+                  },
+                  ...(fairplay ? { streaming: { useNativeHlsForFairPlay: false } } : {})
+                });
+                player.getNetworkingEngine().registerRequestFilter((type, request) => {
+                  if (type !== shaka.net.NetworkingEngine.RequestType.LICENSE) return;
+                  if (fairplay) {
+                    request.headers['Content-Type'] = request.headers['Content-Type'] || 'application/octet-stream';
+                  }
+                  if (Object.keys(headers).length) {
+                    Object.assign(request.headers, headers);
+                  }
+                });
+                if (fairplay) {
+                  player.getNetworkingEngine().registerResponseFilter((type, response) => {
+                    shaka.util.FairPlayUtils.commonFairPlayResponse(type, response);
+                  });
+                }
+                player.addEventListener('error', event => {
+                  console.error('Shaka DRM Error:', event.detail);
+                  art.notice.show = formatShakaError(event.detail);
+                });
+                player.attach(video).then(() => player.load(url)).then(() => {
+                  installShakaQualityControl(art, player);
+                }).catch(error => {
+                  console.error('Shaka Load Error:', error);
+                  art.notice.show = formatShakaError(error);
+                });
+                art.shaka = player;
+                art.on('destroy', () => {
+                  if (art.streamhallDurationGuard) art.streamhallDurationGuard();
+                  player.destroy().catch(() => {});
+                });
+                return;
+              }
+              if (Hls.isSupported()) {
+                if (art.shaka) {
+                  art.shaka.destroy().catch(() => {});
+                  art.shaka = null;
+                }
+                if (art.streamhallDurationGuard) {
+                  art.streamhallDurationGuard();
+                  art.streamhallDurationGuard = null;
+                }
+                if (art.hls) art.hls.destroy();
                 const keyOverride = currentLink ? parseHlsKeyOverride(currentLink.key) : null;
 
                 class CustomLoader extends Hls.DefaultConfig.loader {

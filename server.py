@@ -514,7 +514,48 @@ def admin_session_not_before() -> int:
         return 0
 
 
-def normalize_links(raw: object) -> list[dict[str, str]]:
+def normalize_drm_configs(item: dict[str, object]) -> list[dict[str, str]]:
+    raw_configs = item.get("drmConfigs", item.get("drm_configs", []))
+    configs = raw_configs if isinstance(raw_configs, list) else []
+    normalized: list[dict[str, str]] = []
+
+    for config in configs:
+        if not isinstance(config, dict):
+            continue
+        drm_type = str(config.get("drmType", config.get("drm_type", ""))).strip().lower()
+        if drm_type not in ("widevine", "fairplay"):
+            continue
+        license_url = str(config.get("licenseUrl", config.get("license_url", ""))).strip()
+        if not license_url:
+            continue
+        normalized.append(
+            {
+                "drmType": drm_type,
+                "licenseUrl": license_url,
+                "certificateUrl": str(config.get("certificateUrl", config.get("certificate_url", ""))).strip(),
+                "licenseHeaders": str(config.get("licenseHeaders", config.get("license_headers", ""))).strip(),
+                "pssh": str(config.get("pssh", "")).strip(),
+            }
+        )
+
+    legacy_type = str(item.get("drmType", item.get("drm_type", ""))).strip().lower()
+    legacy_license = str(item.get("licenseUrl", item.get("license_url", ""))).strip()
+    if legacy_type in ("widevine", "fairplay") and legacy_license:
+        has_legacy = any(config["drmType"] == legacy_type for config in normalized)
+        if not has_legacy:
+            normalized.append(
+                {
+                    "drmType": legacy_type,
+                    "licenseUrl": legacy_license,
+                    "certificateUrl": str(item.get("certificateUrl", item.get("certificate_url", ""))).strip(),
+                    "licenseHeaders": str(item.get("licenseHeaders", item.get("license_headers", ""))).strip(),
+                    "pssh": str(item.get("pssh", "")).strip(),
+                }
+            )
+    return normalized
+
+
+def normalize_links(raw: object) -> list[dict[str, object]]:
     links = raw if isinstance(raw, list) else []
     normalized = []
     for item in links:
@@ -527,6 +568,8 @@ def normalize_links(raw: object) -> list[dict[str, str]]:
         link_type = str(item.get("type", "")).strip().lower()
         if link_type not in ("", "m3u8", "flv", "dash"):
             link_type = ""
+        drm_configs = normalize_drm_configs(item)
+        first_drm = drm_configs[0] if drm_configs else {}
         normalized.append(
             {
                 "name": name,
@@ -534,6 +577,12 @@ def normalize_links(raw: object) -> list[dict[str, str]]:
                 "url": url,
                 "key": str(item.get("key", "")).strip(),
                 "clearkey": str(item.get("clearkey", "")).strip(),
+                "drmConfigs": drm_configs,
+                "drmType": str(first_drm.get("drmType", "")),
+                "licenseUrl": str(first_drm.get("licenseUrl", "")),
+                "certificateUrl": str(first_drm.get("certificateUrl", "")),
+                "licenseHeaders": str(first_drm.get("licenseHeaders", "")),
+                "pssh": str(first_drm.get("pssh", "")),
             }
         )
     return normalized
@@ -627,6 +676,23 @@ def stream_probe_response(valid: bool, status_code: int | None = None) -> dict[s
     }
 
 
+def stream_probe_drm_response(
+    valid: bool,
+    status_code: int | None,
+    drm_types: set[str],
+    configured_types: set[str],
+) -> dict[str, object]:
+    missing = bool(drm_types) and not bool(drm_types & configured_types)
+    return {
+        "valid": valid and not missing,
+        "code": "drm_config_missing" if missing else ("detected" if valid else "no_info"),
+        "status_code": status_code,
+        "drm_detected": bool(drm_types),
+        "drm_types": sorted(drm_types),
+        "drm_configured": sorted(configured_types),
+    }
+
+
 def decode_probe_text(data: bytes) -> str:
     for encoding in ("utf-8-sig", "utf-8", "latin-1"):
         try:
@@ -634,6 +700,33 @@ def decode_probe_text(data: bytes) -> str:
         except UnicodeDecodeError:
             continue
     return ""
+
+
+def hls_manifest_drm_types(text: str) -> set[str]:
+    lower = text.lower()
+    types: set[str] = set()
+    if "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed" in lower or "com.widevine" in lower:
+        types.add("widevine")
+    if "com.apple.streamingkeydelivery" in lower or "skd://" in lower:
+        types.add("fairplay")
+    return types
+
+
+def drm_config_types(configs: object) -> set[str]:
+    normalized: set[str] = set()
+    if not isinstance(configs, list):
+        return normalized
+    for config in configs:
+        if not isinstance(config, dict):
+            continue
+        drm_type = str(config.get("drmType", config.get("drm_type", ""))).strip().lower()
+        license_url = str(config.get("licenseUrl", config.get("license_url", ""))).strip()
+        certificate_url = str(config.get("certificateUrl", config.get("certificate_url", ""))).strip()
+        if drm_type == "widevine" and license_url:
+            normalized.add("widevine")
+        if drm_type == "fairplay" and license_url and certificate_url:
+            normalized.add("fairplay")
+    return normalized
 
 
 def resolve_video_file_path(url_path: str) -> str | None:
@@ -670,7 +763,11 @@ def resolve_video_file_path(url_path: str) -> str | None:
     return filepath if os.path.isfile(filepath) else None
 
 
-def probe_stream_url(raw_url: object, type_hint: object = "") -> dict[str, object]:
+def probe_stream_url(
+    raw_url: object,
+    type_hint: object = "",
+    drm_configs: object | None = None,
+) -> dict[str, object]:
     url = str(raw_url or "").strip()
     if not url:
         return stream_probe_response(False)
@@ -715,7 +812,9 @@ def probe_stream_url(raw_url: object, type_hint: object = "") -> dict[str, objec
             marker in text
             for marker in ("#EXTINF", "#EXT-X-STREAM-INF", "#EXT-X-MEDIA-SEQUENCE", "#EXT-X-PART")
         )
-        return stream_probe_response(has_playlist and has_live_media, status_code)
+        drm_types = hls_manifest_drm_types(text)
+        configured_types = drm_config_types(drm_configs)
+        return stream_probe_drm_response(has_playlist and has_live_media, status_code, drm_types, configured_types)
 
     if is_dash or "dash+xml" in content_type:
         return stream_probe_response(b"<MPD" in data[:2048], status_code)
@@ -979,7 +1078,7 @@ def probe_stream_links(row: dict[str, object]) -> dict[str, object]:
     except json.JSONDecodeError:
         links = []
     for index, link in enumerate(links):
-        result = probe_stream_url(link["url"], link.get("type", ""))
+        result = probe_stream_url(link["url"], link.get("type", ""), link.get("drmConfigs", []))
         if result["valid"]:
             return {
                 **result,
@@ -1152,7 +1251,7 @@ def rewrite_external_hls_manifest(manifest: str, base_url: str) -> str:
     # attributes such as EXT-X-KEY) to route through the signed /proxy/hls/
     # endpoint, enabling cross-origin playback and key override in the player.
     def proxied_uri(value: str) -> str:
-        if not value or value.startswith("data:"):
+        if not value or value.startswith(("data:", "skd:")):
             return value
         return hls_proxy_path(urljoin(base_url, value))
 
@@ -1878,7 +1977,7 @@ class StreamHallHandler(BaseHTTPRequestHandler):
 
     def api_check_stream_url(self) -> None:
         body = self.read_json()
-        result = probe_stream_url(body.get("url", ""), body.get("type", ""))
+        result = probe_stream_url(body.get("url", ""), body.get("type", ""), body.get("drmConfigs", body.get("drm_configs", [])))
         self.send_json({"status": "success", "data": result})
 
     def api_check_stream(self) -> None:
