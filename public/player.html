@@ -402,7 +402,7 @@
     function isAndroidRestrictedWebView() {
       const ua = navigator.userAgent || '';
       if (!/Android/i.test(ua)) return false;
-      return /Telegram/i.test(ua) || /; wv\)/i.test(ua) || /\bwv\b/i.test(ua);
+      return /Telegram/i.test(ua);
     }
 
     function selectDrmConfig(link) {
@@ -555,6 +555,7 @@
       let viewerHeartbeatTimer = null;
       let viewerSessionId = '';
       let viewerVisitorId = localStorage.getItem('streamhall_visitor_id') || '';
+      let viewerToken = '';
       let playerInstance = null;
       let playbackMisses = 0;
       if (!viewerVisitorId) {
@@ -632,6 +633,7 @@
           const data = await postViewerEvent('viewer_start', {
             id: streamId,
             visitorId: viewerVisitorId,
+            viewerToken,
             referer: document.referrer || '',
             state: viewerState()
           });
@@ -739,6 +741,7 @@
           els.pwdModal.classList.remove('hidden');
           document.getElementById('pwd-in').focus();
         } else {
+          viewerToken = data.viewerToken || '';
           startViewerStats();
           waitForLiveAndStart(data);
         }
@@ -754,6 +757,7 @@
           applyPlayerTitle(data);
           applySiteIcon(data.siteIconUrl || '');
           els.pwdModal.classList.add('hidden');
+          viewerToken = data.viewerToken || '';
           startViewerStats();
           waitForLiveAndStart(data, pwd);
         } catch (err) {
@@ -814,7 +818,7 @@
           quality: quality,
           title: data.eventName,
           autoplay: true,
-          isLive: linkUsesShakaDrm(initialLink),
+          isLive: data.streamLabel === 'LIVE',
           volume: 0.5,
           autoSize: true,
           fullscreen: true,

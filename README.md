@@ -28,7 +28,7 @@
 ## ✨ Features
 
 - **Public stream list** - Live and archive tabs, password-protected streams, custom site branding, bilingual UI (Chinese / English) with per-language site description
-- **Player** - HLS, FLV, MPEG-DASH playback via ArtPlayer; AES-128 key override and DASH ClearKey support
+- **Player** - HLS, FLV, MPEG-DASH playback via ArtPlayer; AES-128 key override and DASH ClearKey support; Widevine and FairPlay DRM playback via Shaka Player (multi-DRM configs per source, Android Telegram WebView detection)
 - **Admin panel** - Add, edit, reorder, enable/disable streams; manage sources; drag-and-drop ordering
 - **Viewer analytics** - Session tracking, unique visitors, peak concurrent viewers, average watch duration, device / browser / OS / geography breakdown, real-time dashboard, CSV export
 - **Telegram notifications** - Per-stream push messages on stream start and stop
@@ -36,6 +36,7 @@
 - **VOD / file serving** - Signed `/video/` URLs with HTTP Range support (seek-capable); publish any local video file or folder as an archive stream directly from the file browser
 - **HLS proxy** - Signed `/proxy/hls/` routes for cross-origin HLS playback
 - **API key auth** - Generate per-key tokens in the admin panel for programmatic access to all admin and analytics endpoints
+- **Mobile responsive** - Admin panel sidebar, file browser rows, and push directory sidebar all collapse gracefully on narrow screens
 
 <div align="right">
 
@@ -142,7 +143,7 @@ Set these environment variables in `docker-compose.yml`:
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `SECRET_KEY` | `change-this-secret` | **Yes** | HMAC signing key for sessions and stream routes |
+| `SECRET_KEY` | `REPLACE_ME` | **Yes** | HMAC signing key for sessions and stream routes. Generate with `openssl rand -hex 32` |
 | `DATABASE_URL` | see compose file | **Yes** | PostgreSQL connection string |
 | `POSTGRES_PASSWORD` | see compose file | **Yes** | PostgreSQL password |
 | `TZ` | `UTC` | No | Container timezone, e.g. `Asia/Shanghai` |
@@ -234,7 +235,7 @@ The hidden public HLS URL (`/h/<slug>/...`) routes through nginx on port `8889`,
 ### Authentication
 
 - **Browser session** - cookie set by `POST /api?action=login`
-- **API key** - send `Authorization: Bearer <token>` header, or append `?api_key=<token>` to any admin endpoint. Keys are managed in the admin panel under **Site Settings → API Keys**.
+- **API key** - send `Authorization: Bearer <token>` header. Keys are managed in the admin panel under **Site Settings → API Keys**.
 
 ### Public Endpoints
 
@@ -280,7 +281,7 @@ The hidden public HLS URL (`/h/<slug>/...`) routes through nginx on port `8889`,
 | `GET` | `/api?action=stats_geo` | Country-level visitor counts |
 | `GET` | `/api?action=stats_stream_detail&id=<id>` | Single-stream detail |
 | `GET` | `/api?action=stats_sessions_page&id=<id>` | Paginated session list |
-| `GET` | `/api?action=stats_export_csv` | Export sessions as CSV |
+| `GET` | `/api?action=stats_export_csv&range=<range>` | Export sessions as CSV (`range`: `today`, `7d`, `30d` (default), `all`) |
 
 <div align="right">
 

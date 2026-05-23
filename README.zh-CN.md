@@ -28,7 +28,7 @@
 ## ✨ 功能特性
 
 - **公开直播列表** - 直播 / 存档双 Tab，支持密码保护、自定义站点品牌，内置中英双语界面（含分语言站点简介）
-- **播放器** - 基于 ArtPlayer，支持 HLS、FLV、MPEG-DASH 播放；支持 AES-128 密钥覆盖及 DASH ClearKey
+- **播放器** - 基于 ArtPlayer，支持 HLS、FLV、MPEG-DASH 播放；支持 AES-128 密钥覆盖及 DASH ClearKey；通过 Shaka Player 支持 Widevine 和 FairPlay DRM 播放（每路播放源可独立配置多 DRM 方案，内置 Android Telegram WebView 检测）
 - **管理后台** - 直播的增删改查、启用/禁用、拖拽排序；多播放源管理
 - **观看统计** - 会话追踪、独立访客数、峰值并发、平均时长、设备 / 浏览器 / 操作系统 / 地理分布实时看板，支持 CSV 导出
 - **Telegram 推送** - 可按直播单独配置，开播 / 关播自动发送通知
@@ -36,6 +36,7 @@
 - **VOD 点播 / 视频服务** - 带 HMAC 签名的 `/video/` URL，支持 HTTP Range 请求（可 seek）；文件浏览器中可直接将视频文件或文件夹发布为归档直播
 - **HLS 代理** - 带签名验证的 `/proxy/hls/` 路由，解决跨域 HLS 播放问题
 - **API 密钥鉴权** - 在后台生成 Token，可通过 API 密钥对所有管理及统计接口进行程序化访问
+- **移动端适配** - 管理后台侧边栏、文件浏览器行、推流目录侧边栏均可在窄屏设备上自适应折叠
 
 <div align="right">
 
@@ -142,7 +143,7 @@ python server.py
 
 | 变量 | 默认值 | 是否必填 | 说明 |
 |---|---|---|---|
-| `SECRET_KEY` | `change-this-secret` | **必填** | 会话与推流路由的 HMAC 签名密钥 |
+| `SECRET_KEY` | `REPLACE_ME` | **必填** | 会话与推流路由的 HMAC 签名密钥。可用 `openssl rand -hex 32` 生成 |
 | `DATABASE_URL` | 见 compose 文件 | **必填** | PostgreSQL 连接字符串 |
 | `POSTGRES_PASSWORD` | 见 compose 文件 | **必填** | PostgreSQL 数据库密码 |
 | `TZ` | `UTC` | 否 | 容器时区，如 `Asia/Shanghai` |
@@ -234,7 +235,7 @@ RTMP 服务器：  rtmp://HOST:1935/live
 ### 鉴权方式
 
 - **浏览器会话** - 通过 `POST /api?action=login` 登录后设置的 Cookie
-- **API 密钥** - 在请求头携带 `Authorization: Bearer <token>`，或在 URL 追加 `?api_key=<token>`。密钥在后台**网站设置 → API 密钥**处管理。
+- **API 密钥** - 在请求头携带 `Authorization: Bearer <token>`。密钥在后台**网站设置 → API 密钥**处管理。
 
 ### 公开接口
 
@@ -280,7 +281,7 @@ RTMP 服务器：  rtmp://HOST:1935/live
 | `GET` | `/api?action=stats_geo` | 地理分布（国家级） |
 | `GET` | `/api?action=stats_stream_detail&id=<id>` | 单场直播详情 |
 | `GET` | `/api?action=stats_sessions_page&id=<id>` | 分页会话列表 |
-| `GET` | `/api?action=stats_export_csv` | 导出会话 CSV |
+| `GET` | `/api?action=stats_export_csv&range=<range>` | 导出会话 CSV（`range`：`today`、`7d`、`30d`（默认）、`all`） |
 
 <div align="right">
 

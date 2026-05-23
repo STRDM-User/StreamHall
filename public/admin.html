@@ -390,8 +390,9 @@
     }
 
     .link-remove-btn {
-      align-self: start;
-      margin-top: 0;
+      grid-column: -1;
+      grid-row: 1 / -1;
+      align-self: center;
       min-height: 42px;
     }
 
@@ -1144,6 +1145,8 @@
     .dash-range-btn { border:1px solid var(--line); border-radius:5px; padding:4px 10px; color:var(--muted); background:transparent; font-size:.78rem; font-weight:800; cursor:pointer; box-shadow:none; transform:none !important; }
     .dash-range-btn:hover { color:var(--blue); border-color:rgba(78,126,232,.3); background:rgba(78,126,232,.06); filter:none; }
     .dash-range-btn.active { color:#fff; background:var(--blue); border-color:transparent; }
+    .dash-export-range-item { display:block; width:100%; text-align:left; padding:7px 14px; background:none; border:none; color:var(--text); cursor:pointer; font-size:.84em; box-shadow:none; transform:none !important; }
+    .dash-export-range-item:hover { background:rgba(78,126,232,.1); filter:none; }
     .dash-bar-chart { display:flex; align-items:flex-end; gap:2px; height:110px; padding-bottom:3px; }
     .dash-bar-col-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; position:relative; }
     .dash-bar-col { width:100%; min-height:2px; border-radius:3px 3px 0 0; background:var(--blue); opacity:.75; transition:height .4s cubic-bezier(.22,1,.36,1); cursor:default; }
@@ -1605,7 +1608,17 @@
       <h2 style="margin-top:0;margin-bottom:18px;" data-i18n="section.analytics">数据看板</h2>
       <div class="dash-toolbar">
         <span id="dash-live-indicator" class="live-badge" data-state="connecting">连接中...</span>
-        <button type="button" id="dash-export-btn" class="btn-success" data-i18n="dash.export">⬇ 导出 CSV</button>
+        <div style="position:relative;display:inline-block;">
+          <button type="button" id="dash-export-btn" class="btn-success" style="display:flex;align-items:center;gap:5px;">
+            <span data-i18n="dash.export">导出 CSV</span><span style="font-size:.9em;opacity:.75;">▾</span>
+          </button>
+          <div id="dash-export-menu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;z-index:999;min-width:108px;box-shadow:0 4px 16px rgba(0,0,0,.18);">
+            <button type="button" class="dash-export-range-item" data-range="today" data-i18n="range.today">今日</button>
+            <button type="button" class="dash-export-range-item" data-range="7d" data-i18n="range.7d">近 7 天</button>
+            <button type="button" class="dash-export-range-item" data-range="30d" data-i18n="range.30d">近 30 天</button>
+            <button type="button" class="dash-export-range-item" data-range="all" data-i18n="range.all">全部</button>
+          </div>
+        </div>
       </div>
       <div class="dash-card-grid">
         <div class="dash-card dash-accent-mint">
@@ -1807,7 +1820,7 @@
         'dash.total_sub':   '所有观看会话',
         'dash.unique':      '独立访客',
         'dash.unique_sub':  '去重 Visitor ID',
-        'dash.export':      '⬇ 导出 CSV',
+        'dash.export':      '导出 CSV',
         'dash.exporting':   '导出中...',
         'dash.stream_detail': '直播统计明细',
         'dash.per_page':      '每页',
@@ -2207,7 +2220,7 @@
         'dash.total_sub':   'All sessions',
         'dash.unique':      'Unique Visitors',
         'dash.unique_sub':  'Deduped visitor IDs',
-        'dash.export':      '⬇ Export CSV',
+        'dash.export':      'Export CSV',
         'dash.exporting':   'Exporting...',
         'dash.stream_detail': 'Stream Statistics',
         'dash.per_page':      'Per page',
@@ -5029,18 +5042,29 @@
         });
 
         // Dashboard export CSV
-        document.getElementById('dash-export-btn')?.addEventListener('click', async () => {
+        const exportMenu = document.getElementById('dash-export-menu');
+        document.getElementById('dash-export-btn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          exportMenu.style.display = exportMenu.style.display === 'none' ? 'block' : 'none';
+        });
+        document.addEventListener('click', () => { if (exportMenu) exportMenu.style.display = 'none'; });
+        exportMenu?.addEventListener('click', async (e) => {
+          const item = e.target.closest('.dash-export-range-item');
+          if (!item) return;
+          exportMenu.style.display = 'none';
+          const range = item.dataset.range || '30d';
           const btn = document.getElementById('dash-export-btn');
-          btn.disabled = true; btn.textContent = t('dash.exporting');
+          const label = btn.querySelector('[data-i18n="dash.export"]');
+          btn.disabled = true; if (label) label.textContent = t('dash.exporting');
           try {
-            const res = await fetch(`/api?action=stats_export_csv&_t=${Date.now()}`);
+            const res = await fetch(`/api?action=stats_export_csv&range=${range}&_t=${Date.now()}`);
             if (!res.ok) throw new Error('Export failed');
             const blob = await res.blob(), url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.href = url;
-            a.download = `viewer_stats_${new Date().toISOString().slice(0,10)}.csv`;
+            a.download = `viewer_stats_${range}_${new Date().toISOString().slice(0,10)}.csv`;
             a.click(); URL.revokeObjectURL(url);
           } catch (e) { showToast(e.message, 'error'); }
-          finally { btn.disabled = false; btn.textContent = t('dash.export'); }
+          finally { btn.disabled = false; if (label) label.textContent = t('dash.export'); }
         });
 
         // Modal range tabs

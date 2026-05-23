@@ -1,8 +1,9 @@
 /*
  @license
- Shaka Player
+ Shaka Player v4.10.6
  Copyright 2016 Google LLC
  SPDX-License-Identifier: Apache-2.0
+ Source: https://github.com/shaka-project/shaka-player/releases/tag/v4.10.6
 */
 (function(){var innerGlobal=typeof window!="undefined"?window:global;var exportTo={};(function(window,global,module){/*
 

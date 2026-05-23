@@ -90,6 +90,7 @@ VIDEO_EXTS = frozenset({".mp4", ".mkv", ".avi", ".flv", ".ts", ".mov", ".wmv", "
 active_pushes: dict[str, dict] = {}
 _pushes_lock = threading.Lock()
 HLS_PROXY_PREFIX = "/proxy/hls"
+VIEWER_TOKEN_TTL = 300  # seconds
 HLS_URI_RE = re.compile(r'URI="([^"]+)"')  # matches URI="..." attributes in HLS tag lines (e.g. EXT-X-KEY)
 
 DEFAULT_SITE_SETTINGS = {
@@ -421,14 +422,37 @@ def decode_proxy_target(value: str) -> str:
     return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
 
 
-def hls_proxy_host_token(host: str) -> str:
-    return sign(f"hls-proxy-host:{host.lower()}")
+def hls_proxy_url_token(url: str) -> str:
+    return sign(f"hls-proxy-url:{url}")
+
+
+def make_viewer_token(stream_id: int) -> str:
+    expiry = now() + VIEWER_TOKEN_TTL
+    payload = f"{stream_id}:{expiry}"
+    encoded = base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+    return f"{encoded}.{sign(f'viewer-token:{payload}')}"
+
+
+def verify_viewer_token(token: str, stream_id: int) -> bool:
+    if not token or "." not in token:
+        return False
+    encoded, sig = token.rsplit(".", 1)
+    try:
+        padded = encoded + "=" * (-len(encoded) % 4)
+        payload = base64.urlsafe_b64decode(padded.encode()).decode()
+        tid_str, expiry_str = payload.split(":", 1)
+    except Exception:
+        return False
+    if int(tid_str) != stream_id:
+        return False
+    if now() > int(expiry_str):
+        return False
+    return hmac.compare_digest(sig, sign(f"viewer-token:{payload}"))
 
 
 def hls_proxy_path(url: str) -> str:
-    host = urlparse(url).netloc
     encoded = encode_proxy_target(url)
-    return f"{HLS_PROXY_PREFIX}/{hls_proxy_host_token(host)}/{encoded}"
+    return f"{HLS_PROXY_PREFIX}/{hls_proxy_url_token(url)}/{encoded}"
 
 
 PLAYABLE_VIDEO_EXTS = frozenset({".mp4", ".mkv", ".mov", ".webm", ".m4v"})
@@ -712,6 +736,25 @@ def hls_manifest_drm_types(text: str) -> set[str]:
     return types
 
 
+def hls_first_variant_url(text: str, base_url: str) -> str | None:
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().startswith("#EXT-X-STREAM-INF"):
+            for j in range(i + 1, len(lines)):
+                candidate = lines[j].strip()
+                if candidate and not candidate.startswith("#"):
+                    return urljoin(base_url, candidate)
+    return None
+
+
+def dash_manifest_drm_types(text: str) -> set[str]:
+    lower = text.lower()
+    types: set[str] = set()
+    if "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed" in lower or "com.widevine" in lower:
+        types.add("widevine")
+    return types
+
+
 def drm_config_types(configs: object) -> set[str]:
     normalized: set[str] = set()
     if not isinstance(configs, list):
@@ -813,11 +856,24 @@ def probe_stream_url(
             for marker in ("#EXTINF", "#EXT-X-STREAM-INF", "#EXT-X-MEDIA-SEQUENCE", "#EXT-X-PART")
         )
         drm_types = hls_manifest_drm_types(text)
+        if "#EXT-X-STREAM-INF" in text:
+            variant_url = hls_first_variant_url(text, url)
+            if variant_url:
+                try:
+                    with urlopen(Request(variant_url, headers=headers), timeout=STREAM_PROBE_TIMEOUT) as vresp:
+                        vdata = vresp.read(65536)
+                    drm_types |= hls_manifest_drm_types(decode_probe_text(vdata))
+                except Exception:
+                    pass
         configured_types = drm_config_types(drm_configs)
         return stream_probe_drm_response(has_playlist and has_live_media, status_code, drm_types, configured_types)
 
     if is_dash or "dash+xml" in content_type:
-        return stream_probe_response(b"<MPD" in data[:2048], status_code)
+        text = decode_probe_text(data)
+        valid = "<MPD" in text[:2048]
+        drm_types = dash_manifest_drm_types(text)
+        configured_types = drm_config_types(drm_configs)
+        return stream_probe_drm_response(valid, status_code, drm_types, configured_types)
 
     if is_flv or "flv" in content_type:
         return stream_probe_response(data.startswith(b"FLV") or len(data) > 0, status_code)
@@ -916,8 +972,6 @@ def verify_admin_password(password: str) -> bool:
 
 
 def client_ip_hash(headers: object) -> str:
-    # Hash the client IP with HMAC-SHA256 so unique visitors can be counted
-    # without storing the raw IP address in the database.
     raw = headers.get("CF-Connecting-IP") or headers.get("X-Forwarded-For") or headers.get("X-Real-IP") or ""
     ip = str(raw).split(",", 1)[0].strip()
     if not ip:
@@ -1066,9 +1120,11 @@ def player_data(row: dict[str, object], settings: dict[str, str] | None = None) 
     site = settings or site_settings()
     return {
         "eventName": row["event_name"],
+        "streamLabel": normalize_stream_label(row["stream_label"]),
         "siteTitle": site["site_title"],
         "siteIconUrl": site.get("site_icon_url", ""),
         "links": add_playback_urls(normalize_links(links)),
+        "viewerToken": make_viewer_token(int(row["id"])),
     }
 
 
@@ -1333,13 +1389,10 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         return self._verify_api_key()
 
     def _verify_api_key(self) -> bool:
-        token = None
         auth = self.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:].strip()
-        if not token:
-            qs = parse_qs(urlparse(self.path).query)
-            token = qs.get("api_key", [""])[0]
+        if not auth.startswith("Bearer "):
+            return False
+        token = auth[7:].strip()
         if not token:
             return False
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -1646,6 +1699,7 @@ class StreamHallHandler(BaseHTTPRequestHandler):
 
     def api_viewer_start(self) -> None:
         body = self.read_json()
+        viewer_token = str(body.get("viewerToken", "")).strip()
         visitor_id = str(body.get("visitorId", "")).strip()[:120] or secrets.token_urlsafe(18)
         stream_ref = body.get("id", "")
         referer = str(body.get("referer", self.headers.get("Referer", ""))).strip()[:500]
@@ -1653,6 +1707,8 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             row = find_stream(conn, stream_ref)
             if not row or int(row["is_enabled"] or 0) != 1:
                 raise AppError("stream_not_found_or_disabled")
+            if not verify_viewer_token(viewer_token, int(row["id"])):
+                raise AppError("auth_required")
             session_id = secrets.token_urlsafe(18)
             timestamp = now()
             conn.execute(
@@ -2164,18 +2220,37 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         }})
 
     def api_stats_export_csv(self) -> None:
+        qs = parse_qs(urlparse(self.path).query)
+        range_param = qs.get("range", ["30d"])[0]
+        since_map = {"today": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
+        since = now() - since_map[range_param] if range_param in since_map else 0
         with db() as conn:
-            rows = conn.execute(
-                """
-                SELECT vs.session_id, vs.visitor_id, s.event_name,
-                       vs.device_type, vs.referer,
-                       vs.started_at, vs.ended_at, vs.last_seen_at,
-                       vs.is_active, vs.play_state
-                FROM viewer_sessions vs
-                LEFT JOIN streams s ON vs.stream_id = s.id
-                ORDER BY vs.started_at DESC
-                """
-            ).fetchall()
+            if since:
+                rows = conn.execute(
+                    """
+                    SELECT vs.session_id, vs.visitor_id, s.event_name,
+                           vs.device_type, vs.referer,
+                           vs.started_at, vs.ended_at, vs.last_seen_at,
+                           vs.is_active, vs.play_state
+                    FROM viewer_sessions vs
+                    LEFT JOIN streams s ON vs.stream_id = s.id
+                    WHERE vs.started_at >= ?
+                    ORDER BY vs.started_at DESC
+                    """,
+                    (since,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT vs.session_id, vs.visitor_id, s.event_name,
+                           vs.device_type, vs.referer,
+                           vs.started_at, vs.ended_at, vs.last_seen_at,
+                           vs.is_active, vs.play_state
+                    FROM viewer_sessions vs
+                    LEFT JOIN streams s ON vs.stream_id = s.id
+                    ORDER BY vs.started_at DESC
+                    """
+                ).fetchall()
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(["session_id", "visitor_id", "event_name", "device_type", "referer",
@@ -2650,7 +2725,7 @@ class StreamHallHandler(BaseHTTPRequestHandler):
 
     def proxy_hls_route(self, request_path: str, send_body: bool = True) -> None:
         # URL format: /proxy/hls/<token>/<base64-encoded-url>
-        # The token is an HMAC of the target hostname; it ensures that only URLs
+        # The token is an HMAC of the full target URL; it ensures that only URLs
         # generated by hls_proxy_path() can be proxied, preventing open-proxy abuse.
         parts = request_path.strip("/").split("/")
         if len(parts) != 4 or parts[0] != "proxy" or parts[1] != "hls":
@@ -2666,7 +2741,7 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if parsed.scheme not in ("http", "https"):
             self.send_error(HTTPStatus.BAD_REQUEST)
             return
-        if not hmac.compare_digest(token, hls_proxy_host_token(parsed.netloc)):
+        if not hmac.compare_digest(token, hls_proxy_url_token(target_url)):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
 
@@ -3202,7 +3277,12 @@ def resume_push_jobs() -> None:
                 pass
 
 
+_WEAK_KEYS = {b"change-this-secret", b"REPLACE_ME"}
+
 def main() -> None:
+    if SECRET_KEY in _WEAK_KEYS:
+        print("WARNING: SECRET_KEY is set to a known default value. "
+              "Generate a secure key with: openssl rand -hex 32", flush=True)
     init_db()
     threading.Thread(target=resume_push_jobs, daemon=True).start()
     threading.Thread(target=monitor_streams_loop, daemon=True).start()
