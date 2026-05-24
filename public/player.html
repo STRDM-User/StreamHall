@@ -368,6 +368,189 @@
       const contentId = getFairPlayContentId(initData);
       return shaka.util.FairPlayUtils.initDataTransform(initData, contentId, drmInfo.serverCertificate);
     }
+    function fairPlayStringToUtf16Buffer(text) {
+      const buffer = new ArrayBuffer(text.length * 2);
+      const view = new Uint16Array(buffer);
+      for (let i = 0; i < text.length; i++) view[i] = text.charCodeAt(i);
+      return new Uint8Array(buffer);
+    }
+
+    function concatFairPlayInitData(initData, contentId, certificate) {
+      const init = new Uint8Array(initData);
+      const id = fairPlayStringToUtf16Buffer(contentId);
+      const cert = new Uint8Array(certificate);
+      const result = new Uint8Array(init.byteLength + 4 + id.byteLength + 4 + cert.byteLength);
+      const view = new DataView(result.buffer);
+      let offset = 0;
+      result.set(init, offset);
+      offset += init.byteLength;
+      view.setUint32(offset, id.byteLength, true);
+      offset += 4;
+      result.set(id, offset);
+      offset += id.byteLength;
+      view.setUint32(offset, cert.byteLength, true);
+      offset += 4;
+      result.set(cert, offset);
+      return result;
+    }
+
+    function getLegacyFairPlayContentId(initData) {
+      const text = shaka.util.StringUtils.fromBytesAutoDetect(initData);
+      const raw = shaka.util.FairPlayUtils.defaultGetContentId(text) || text.replace(/^skd:\/\//i, '');
+      const query = raw.includes('?') ? raw.split('?').pop() : raw;
+      const params = new URLSearchParams(query.replace(/^.*?assetId=/, 'assetId='));
+      return params.get('assetId') || raw;
+    }
+
+    function transformLegacyFairPlayInitData(initData, certificate) {
+      const contentId = getLegacyFairPlayContentId(initData);
+      return concatFairPlayInitData(initData, contentId, certificate);
+    }
+    function normalizeFairPlayLicenseResponse(buffer, contentType = '') {
+      const data = new Uint8Array(buffer);
+      const type = String(contentType || '').toLowerCase();
+      const looksTextWrapped = type.includes('json') || type.includes('xml') || type.includes('text');
+      if (!looksTextWrapped || !window.shaka?.util?.FairPlayUtils || !window.shaka?.net?.NetworkingEngine) {
+        return data;
+      }
+      try {
+        const response = { data, headers: { 'content-type': contentType } };
+        shaka.util.FairPlayUtils.commonFairPlayResponse(shaka.net.NetworkingEngine.RequestType.LICENSE, response);
+        return response.data;
+      } catch (error) {
+        console.warn('Native FairPlay response unwrap skipped:', error);
+        return data;
+      }
+    }
+
+    function setupNativeFairPlayHls(video, url, drm, art, options = {}) {
+      if (!window.WebKitMediaKeys || !WebKitMediaKeys.isTypeSupported('com.apple.fps.1_0', 'video/mp4')) {
+        return null;
+      }
+      const licenseUrl = String(drm?.licenseUrl || '').trim();
+      const certificateUrl = String(drm?.certificateUrl || '').trim();
+      const headers = parseHeaderConfig(drm?.licenseHeaders || '');
+      const keySystem = 'com.apple.fps.1_0';
+      const sessions = [];
+      const disposers = [];
+      let disposed = false;
+      let loaded = false;
+      const showNativeError = (stage, error) => {
+        const detail = error?.message || error?.name || error?.type || error?.code || String(error || 'unknown');
+        console.error(`Native FairPlay Error [${stage}]:`, error);
+        art.notice.show = `${t('drm_playback_error')} (${stage}: ${detail})`;
+      };
+      const certificatePromise = fetch(certificateUrl, { cache: 'force-cache' }).then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.arrayBuffer();
+      }).then(buffer => {
+        console.info('Native FairPlay certificate loaded:', certificateUrl, buffer.byteLength);
+        return new Uint8Array(buffer);
+      }).catch(error => {
+        showNativeError('certificate', error);
+        throw error;
+      });
+      const clearWaiting = () => {
+        loaded = true;
+      };
+      const handleNeedKey = event => {
+        console.info('Native FairPlay needkey:', event);
+        certificatePromise.then(certificate => {
+          if (disposed) return;
+          try {
+            const initData = event.initData || event.webkitInitData;
+            if (!initData || !initData.byteLength) throw new Error('missing initData');
+            const transformed = transformLegacyFairPlayInitData(initData, certificate);
+            console.info('Native FairPlay initData:', shaka.util.StringUtils.fromBytesAutoDetect(initData), 'contentId=', getLegacyFairPlayContentId(initData), initData.byteLength, transformed.byteLength);
+            let session = null;
+            try {
+              session = video.webkitKeys.createSession('video/mp4', transformed);
+            } catch (error) {
+              showNativeError('create-session', error);
+              return;
+            }
+            if (!session) {
+              showNativeError('create-session', new Error('empty session'));
+              return;
+            }
+            sessions.push(session);
+            const handleMessage = messageEvent => {
+              const message = messageEvent.message || messageEvent.webkitMessage;
+              if (!message || !message.byteLength) {
+                showNativeError('license-message', new Error('missing SPC message'));
+                return;
+              }
+              const licenseEndpoint = options.licenseProxyUrl || licenseUrl;
+              console.info('Native FairPlay license request:', licenseEndpoint, message.byteLength);
+              const requestHeaders = options.licenseProxyUrl
+                ? { 'Content-Type': 'application/octet-stream', 'X-StreamHall-Viewer-Token': options.viewerToken || '' }
+                : { 'Content-Type': 'application/octet-stream', ...headers };
+              fetch(licenseEndpoint, {
+                method: 'POST',
+                headers: requestHeaders,
+                body: message
+              }).then(async response => {
+                const contentType = response.headers.get('content-type') || '';
+                console.info('Native FairPlay license status:', response.status, contentType);
+                const buffer = await response.arrayBuffer();
+                if (!response.ok) {
+                  const text = new TextDecoder().decode(buffer.slice(0, 2048));
+                  console.warn('Native FairPlay license error body:', text);
+                  throw `HTTP ${response.status}: ${text}`;
+                }
+                return { buffer, contentType };
+              }).then(({ buffer, contentType }) => {
+                if (disposed) return;
+                console.info('Native FairPlay license response:', buffer.byteLength);
+                session.update(normalizeFairPlayLicenseResponse(buffer, contentType));
+              }).catch(error => showNativeError('license', error));
+            };
+            const handleKeyError = errorEvent => {
+              const code = session.error ? `${session.error.code || ''} ${session.error.systemCode || ''}`.trim() : '';
+              showNativeError('key-session', code ? new Error(code) : errorEvent);
+            };
+            session.addEventListener('webkitkeymessage', handleMessage);
+            session.addEventListener('webkitkeyerror', handleKeyError);
+            disposers.push(() => {
+              session.removeEventListener('webkitkeymessage', handleMessage);
+              session.removeEventListener('webkitkeyerror', handleKeyError);
+            });
+          } catch (error) {
+            showNativeError('needkey', error);
+          }
+        }).catch(error => showNativeError('certificate', error));
+      };
+      const handleVideoError = () => showNativeError('media', video.error || new Error('Native FairPlay media error'));
+      try {
+        video.webkitSetMediaKeys(new WebKitMediaKeys(keySystem));
+      } catch (error) {
+        showNativeError('mediakeys', error);
+        return null;
+      }
+      video.addEventListener('webkitneedkey', handleNeedKey);
+      video.addEventListener('loadeddata', clearWaiting);
+      video.addEventListener('playing', clearWaiting);
+      video.addEventListener('error', handleVideoError);
+      disposers.push(() => {
+        video.removeEventListener('webkitneedkey', handleNeedKey);
+        video.removeEventListener('loadeddata', clearWaiting);
+        video.removeEventListener('playing', clearWaiting);
+        video.removeEventListener('error', handleVideoError);
+      });
+      const timeout = window.setTimeout(() => {
+        if (!disposed && !loaded && video.readyState < 2) {
+          art.notice.show = `${t('drm_playback_error')} (native FairPlay timeout)`;
+        }
+      }, 15000);
+      video.src = url;
+      video.load();
+      return () => {
+        disposed = true;
+        window.clearTimeout(timeout);
+        disposers.splice(0).forEach(dispose => dispose());
+        try { video.removeAttribute('src'); video.load(); } catch (e) {}
+      };
+    }
 
     function getDrmConfigs(link) {
       const configs = Array.isArray(link?.drmConfigs) ? link.drmConfigs : Array.isArray(link?.drm_configs) ? link.drm_configs : [];
@@ -376,7 +559,10 @@
         licenseUrl: String(config?.licenseUrl || config?.license_url || '').trim(),
         certificateUrl: String(config?.certificateUrl || config?.certificate_url || '').trim(),
         licenseHeaders: String(config?.licenseHeaders || config?.license_headers || '').trim(),
-        pssh: String(config?.pssh || '').trim()
+        pssh: String(config?.pssh || '').trim(),
+        playbackUrl: String(config?.playbackUrl || config?.playback_url || '').trim(),
+        playbackType: String(config?.playbackType || config?.playback_type || '').trim().toLowerCase(),
+        playback_url: String(config?.playback_url || '').trim()
       })).filter(config => (config.drmType === 'widevine' || config.drmType === 'fairplay') && config.licenseUrl);
       if (normalized.length) return normalized;
       const legacyType = String(link?.drmType || link?.drm_type || '').toLowerCase();
@@ -387,22 +573,47 @@
           licenseUrl: legacyLicense,
           certificateUrl: String(link?.certificateUrl || link?.certificate_url || '').trim(),
           licenseHeaders: String(link?.licenseHeaders || link?.license_headers || '').trim(),
-          pssh: String(link?.pssh || '').trim()
+          pssh: String(link?.pssh || '').trim(),
+          playbackUrl: String(link?.playbackUrl || link?.playback_url || '').trim(),
+          playbackType: String(link?.playbackType || link?.playback_type || '').trim().toLowerCase(),
+          playback_url: String(link?.playback_url || '').trim()
         }];
       }
       return [];
     }
 
-    function browserPrefersFairPlay() {
+    function isAppleWebKitFairPlayCapable() {
       const ua = navigator.userAgent || '';
-      const isSafari = /Safari/i.test(ua) && !/(Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPiOS)/i.test(ua);
-      return !!window.WebKitMediaKeys || isSafari;
+      const isiOSWebKit = /iPad|iPhone|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isDesktopSafari = /Safari/i.test(ua) && !/(Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPiOS)/i.test(ua);
+      return !!window.WebKitMediaKeys || isiOSWebKit || isDesktopSafari;
+    }
+
+    function browserPrefersFairPlay() {
+      return isAppleWebKitFairPlayCapable();
     }
 
     function isAndroidRestrictedWebView() {
       const ua = navigator.userAgent || '';
       if (!/Android/i.test(ua)) return false;
       return /Telegram/i.test(ua);
+    }
+
+    async function canUseWidevineKeySystem() {
+      if (!navigator.requestMediaKeySystemAccess) return false;
+      try {
+        await navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{
+          initDataTypes: ['cenc'],
+          audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
+          videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }],
+          distinctiveIdentifier: 'optional',
+          persistentState: 'optional',
+          sessionTypes: ['temporary']
+        }]);
+        return true;
+      } catch (error) {
+        return false;
+      }
     }
 
     function selectDrmConfig(link) {
@@ -426,8 +637,44 @@
       return !!selectDrmConfig(link);
     }
 
+    function safeDestroyHls(art) {
+      try {
+        const hls = art?.hls;
+        if (hls) hls.destroy();
+      } catch (error) {
+        if (!String(error?.message || error).includes('Cannot find instance of HLS')) {
+          console.warn('HLS cleanup skipped:', error);
+        }
+      }
+    }
+
     function linkHasDrmConfigs(link) {
       return getDrmConfigs(link).length > 0;
+    }
+    function drmConfigMatchScore(config, selected) {
+      if (!selected || config.drmType !== selected.drmType) return -1;
+      let score = 1;
+      const fields = ['licenseUrl', 'certificateUrl', 'playbackUrl', 'playbackType', 'pssh', 'licenseHeaders'];
+      for (const field of fields) {
+        const left = String(config[field] || '').trim();
+        const right = String(selected[field] || '').trim();
+        if (left && right && left !== right) return -1;
+        if (left === right) score += 1;
+      }
+      return score;
+    }
+    function getDrmConfigIndex(link, selected) {
+      const configs = getDrmConfigs(link);
+      let bestIndex = -1;
+      let bestScore = -1;
+      configs.forEach((config, index) => {
+        const score = drmConfigMatchScore(config, selected);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
+        }
+      });
+      return bestIndex;
     }
 
     function formatShakaError(error) {
@@ -464,22 +711,36 @@
     function installShakaQualityControl(art, player) {
       const update = () => {
         const tracks = player.getVariantTracks()
-          .filter(track => track.videoId !== null && track.videoId !== undefined)
+          .filter(track => track.videoId !== null && track.videoId !== undefined && (track.height || track.bandwidth))
           .sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0));
-        const unique = [];
-        const seen = new Set();
+        const byVideoTrack = new Map();
         tracks.forEach(track => {
-          const key = `${track.height || 0}-${Math.round((track.bandwidth || 0) / 1000)}`;
-          if (seen.has(key)) return;
-          seen.add(key);
-          unique.push(track);
+          const key = track.videoId != null ? `video-${track.videoId}` : `${track.width || 0}x${track.height || 0}-${track.codecs || ''}-${Math.round((track.bandwidth || 0) / 250000)}`;
+          const current = byVideoTrack.get(key);
+          if (!current || track.active || (!current.active && (track.bandwidth || 0) > (current.bandwidth || 0))) {
+            byVideoTrack.set(key, track);
+          }
         });
+        const unique = Array.from(byVideoTrack.values())
+          .sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0));
         if (!unique.length) return;
         const active = unique.find(track => track.active) || tracks.find(track => track.active);
         const autoLabel = 'Auto';
-        const selectedLabel = active?.height ? `${active.height}P` : autoLabel;
+        const heightCounts = unique.reduce((acc, track) => {
+          const key = track.height || 0;
+          acc.set(key, (acc.get(key) || 0) + 1);
+          return acc;
+        }, new Map());
+        const qualityLabel = track => {
+          if (!track) return autoLabel;
+          const kbps = Math.round((track.videoBandwidth || track.bandwidth || 0) / 1000);
+          if (!track.height) return `${kbps}K`;
+          if ((heightCounts.get(track.height) || 0) <= 1) return `${track.height}P`;
+          return kbps >= 1000 ? `${track.height}P (${(kbps / 1000).toFixed(1)}M)` : `${track.height}P (${kbps}K)`;
+        };
+        const selectedLabel = active ? qualityLabel(active) : autoLabel;
         const selector = unique.map(track => ({
-          html: track.height ? `${track.height}P` : `${Math.round((track.bandwidth || 0) / 1000)}K`,
+          html: qualityLabel(track),
           value: track.id,
           default: !!track.active
         }));
@@ -526,6 +787,15 @@
     }
 
     function getLinkType(link) {
+      if (linkUsesShakaDrm(link)) return 'm3u8';
+      const selectedDrm = selectDrmConfig(link);
+      if (selectedDrm?.playbackUrl) {
+        if (selectedDrm.playbackType) return selectedDrm.playbackType;
+        const drmPath = selectedDrm.playbackUrl.split('?')[0].toLowerCase();
+        if (drmPath.endsWith('.mpd')) return 'dash';
+        if (drmPath.endsWith('.m3u8')) return 'm3u8';
+        if (drmPath.endsWith('.flv')) return 'flv';
+      }
       if (link.type) return link.type;
       const path = (link.url || '').split('?')[0].toLowerCase();
       if (path.endsWith('.mpd')) return 'dash';
@@ -535,6 +805,8 @@
     }
 
     function getPlaybackUrl(link) {
+      const selectedDrm = selectDrmConfig(link);
+      if (selectedDrm?.playbackUrl) return selectedDrm.playback_url || selectedDrm.playbackUrl;
       return link.playback_url || link.url;
     }
 
@@ -797,7 +1069,7 @@
           return;
         }
 
-        const activeLinks = [...links];
+        const activeLinks = links.map((link, index) => ({ ...link, _sourceIndex: index }));
         const preferredIndex = activeLinks.findIndex(link => link.url === preferredUrl || getPlaybackUrl(link) === preferredUrl);
         if (preferredIndex > 0) {
           activeLinks.unshift(activeLinks.splice(preferredIndex, 1)[0]);
@@ -810,6 +1082,12 @@
           type: getLinkType(l)
         }));
         const initialLink = activeLinks[0] || null;
+        const initialUsesDrm = linkUsesShakaDrm(initialLink);
+        const hlsControlPlugins = initialUsesDrm ? [] : [
+          artplayerPluginHlsControl({
+            quality: { control: true, setting: true, getName: (l) => l.height + 'P', title: t('quality') }
+          })
+        ];
 
         playerInstance = new Artplayer({
           container: '.artplayer-app',
@@ -818,7 +1096,7 @@
           quality: quality,
           title: data.eventName,
           autoplay: true,
-          isLive: data.streamLabel === 'LIVE',
+          isLive: data.streamLabel === 'LIVE' && !initialUsesDrm,
           volume: 0.5,
           autoSize: true,
           fullscreen: true,
@@ -844,20 +1122,59 @@
                 return;
               }
               if (linkUsesShakaDrm(currentLink)) {
-                if (art.hls) art.hls.destroy();
-                if (window.shaka?.polyfill) shaka.polyfill.installAll();
-                if (!window.shaka || !shaka.Player || !shaka.Player.isBrowserSupported()) {
-                  art.notice.show = t('drm_unavailable');
-                  return;
-                }
                 const selectedDrm = selectDrmConfig(currentLink);
-                if (selectedDrm?.drmType === 'widevine' && isAndroidRestrictedWebView()) {
-                  art.notice.show = t('drm_android_webview_unsupported');
-                  return;
-                }
+                const fairplay = selectedDrm?.drmType === 'fairplay';
+                const certificateUrl = String(selectedDrm?.certificateUrl || '').trim();
                 const licenseUrl = String(selectedDrm?.licenseUrl || '').trim();
                 if (!licenseUrl) {
                   art.notice.show = t('drm_license_missing');
+                  return;
+                }
+                if (fairplay && !certificateUrl) {
+                  art.notice.show = t('drm_certificate_missing');
+                  return;
+                }
+
+                if (selectedDrm?.drmType === 'widevine' && isAndroidRestrictedWebView()) {
+                  canUseWidevineKeySystem().then(supported => {
+                    if (!supported) art.notice.show = t('drm_android_webview_unsupported');
+                  });
+                }
+                if (art.nativeFairPlayCleanup) {
+                  art.nativeFairPlayCleanup();
+                  art.nativeFairPlayCleanup = null;
+                }
+                safeDestroyHls(art);
+                const linkIndex = Number.isInteger(currentLink?._sourceIndex) ? currentLink._sourceIndex : activeLinks.indexOf(currentLink);
+                const drmIndex = getDrmConfigIndex(currentLink, selectedDrm);
+                if (fairplay && isAppleWebKitFairPlayCapable() && window.WebKitMediaKeys) {
+                  if (art.shaka) {
+                    art.shaka.destroy().catch(() => {});
+                    art.shaka = null;
+                  }
+                  if (art.streamhallDurationGuard) art.streamhallDurationGuard();
+                  art.streamhallDurationGuard = installLiveDurationGuard(art);
+                  const licenseProxyUrl = linkIndex >= 0 && drmIndex >= 0
+                    ? `/api?action=fairplay_license&id=${encodeURIComponent(streamId)}&link=${encodeURIComponent(linkIndex)}&drm=${encodeURIComponent(drmIndex)}`
+                    : '';
+                  const cleanup = setupNativeFairPlayHls(video, url, selectedDrm, art, { licenseProxyUrl, viewerToken });
+                  if (!cleanup) {
+                    art.notice.show = t('drm_unavailable');
+                    return;
+                  }
+                  art.nativeFairPlayCleanup = cleanup;
+                  art.on('destroy', () => {
+                    if (art.streamhallDurationGuard) art.streamhallDurationGuard();
+                    if (art.nativeFairPlayCleanup) {
+                      art.nativeFairPlayCleanup();
+                      art.nativeFairPlayCleanup = null;
+                    }
+                  });
+                  return;
+                }
+                if (window.shaka?.polyfill) shaka.polyfill.installAll();
+                if (!window.shaka || !shaka.Player || !shaka.Player.isBrowserSupported()) {
+                  art.notice.show = t('drm_unavailable');
                   return;
                 }
                 if (art.shaka) art.shaka.destroy().catch(() => {});
@@ -865,14 +1182,16 @@
                 art.streamhallDurationGuard = installLiveDurationGuard(art);
                 const player = new shaka.Player();
                 const headers = parseHeaderConfig(selectedDrm?.licenseHeaders || '');
-                const fairplay = selectedDrm?.drmType === 'fairplay';
                 const keySystem = fairplay ? 'com.apple.fps' : 'com.widevine.alpha';
                 const fairplayLegacyKeySystem = 'com.apple.fps.1_0';
-                const certificateUrl = String(selectedDrm?.certificateUrl || '').trim();
-                const servers = { [keySystem]: licenseUrl };
+                const widevineProxyUrl = !fairplay && linkIndex >= 0 && drmIndex >= 0
+                  ? `/api?action=widevine_license&id=${encodeURIComponent(streamId)}&link=${encodeURIComponent(linkIndex)}&drm=${encodeURIComponent(drmIndex)}&vt=${encodeURIComponent(viewerToken || '')}`
+                  : '';
+                const shakaLicenseUrl = widevineProxyUrl || licenseUrl;
+                const servers = { [keySystem]: shakaLicenseUrl };
                 const advanced = {};
                 if (fairplay) {
-                  servers[fairplayLegacyKeySystem] = licenseUrl;
+                  servers[fairplayLegacyKeySystem] = shakaLicenseUrl;
                   advanced[keySystem] = {
                     serverCertificateUri: certificateUrl,
                     audioRobustness: '',
@@ -896,21 +1215,21 @@
                   servers,
                   advanced
                 };
-                if (fairplay && !certificateUrl) {
-                  art.notice.show = t('drm_certificate_missing');
-                  return;
-                }
+
                 player.configure({
                   drm: {
                     ...drmConfig,
                     ...(fairplay ? { initDataTransform: transformFairPlayInitData } : {})
                   },
-                  ...(fairplay ? { streaming: { useNativeHlsForFairPlay: false } } : {})
+                  ...(fairplay ? { streaming: { useNativeHlsForFairPlay: isAppleWebKitFairPlayCapable() } } : {})
                 });
                 player.getNetworkingEngine().registerRequestFilter((type, request) => {
                   if (type !== shaka.net.NetworkingEngine.RequestType.LICENSE) return;
                   if (fairplay) {
                     request.headers['Content-Type'] = request.headers['Content-Type'] || 'application/octet-stream';
+                  }
+                  if (widevineProxyUrl) {
+                    request.headers['X-StreamHall-Viewer-Token'] = viewerToken || '';
                   }
                   if (Object.keys(headers).length) {
                     Object.assign(request.headers, headers);
@@ -939,6 +1258,10 @@
                 return;
               }
               if (Hls.isSupported()) {
+                if (art.nativeFairPlayCleanup) {
+                  art.nativeFairPlayCleanup();
+                  art.nativeFairPlayCleanup = null;
+                }
                 if (art.shaka) {
                   art.shaka.destroy().catch(() => {});
                   art.shaka = null;
@@ -947,7 +1270,7 @@
                   art.streamhallDurationGuard();
                   art.streamhallDurationGuard = null;
                 }
-                if (art.hls) art.hls.destroy();
+                safeDestroyHls(art);
                 const keyOverride = currentLink ? parseHlsKeyOverride(currentLink.key) : null;
 
                 class CustomLoader extends Hls.DefaultConfig.loader {
@@ -1006,11 +1329,7 @@
               art.on('destroy', () => dash.destroy());
             }
           },
-          plugins: [
-            artplayerPluginHlsControl({
-              quality: { control: true, setting: true, getName: (l) => l.height + 'P', title: t('quality') }
-            })
-          ]
+          plugins: hlsControlPlugins
         });
         startPlaybackMonitor(data, password);
       }

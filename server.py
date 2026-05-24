@@ -7,6 +7,7 @@ import csv
 import hashlib
 import hmac
 import io
+import ipaddress
 import json
 import mimetypes
 import os
@@ -17,13 +18,14 @@ import tempfile
 import threading
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 try:
     import psycopg
@@ -500,6 +502,22 @@ def add_playback_urls(links: list[dict[str, object]]) -> list[dict[str, object]]
         parsed = urlparse(raw_url)
         if is_hls_link(item) and parsed.scheme in ("http", "https"):
             item["playback_url"] = hls_proxy_path(raw_url)
+        drm_configs = item.get("drmConfigs", [])
+        if isinstance(drm_configs, list):
+            prepared_configs: list[dict[str, object]] = []
+            for config in drm_configs:
+                if not isinstance(config, dict):
+                    continue
+                config_item = dict(config)
+                drm_playback_url = str(config_item.get("playbackUrl") or "")
+                drm_playback_type = str(config_item.get("playbackType") or "")
+                if drm_playback_url:
+                    probe_item = {"url": drm_playback_url, "type": drm_playback_type}
+                    parsed_drm_url = urlparse(drm_playback_url)
+                    if is_hls_link(probe_item) and parsed_drm_url.scheme in ("http", "https"):
+                        config_item["playback_url"] = hls_proxy_path(drm_playback_url)
+                prepared_configs.append(config_item)
+            item["drmConfigs"] = prepared_configs
         prepared.append(item)
     return prepared
 
@@ -538,6 +556,27 @@ def admin_session_not_before() -> int:
         return 0
 
 
+def parse_header_config(text: object) -> dict[str, str]:
+    raw = str(text or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return {str(k): str(v) for k, v in parsed.items() if k and v is not None}
+    except json.JSONDecodeError:
+        pass
+    headers: dict[str, str] = {}
+    for line in raw.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if key and value:
+            headers[key] = value
+    return headers
+
 def normalize_drm_configs(item: dict[str, object]) -> list[dict[str, str]]:
     raw_configs = item.get("drmConfigs", item.get("drm_configs", []))
     configs = raw_configs if isinstance(raw_configs, list) else []
@@ -552,6 +591,9 @@ def normalize_drm_configs(item: dict[str, object]) -> list[dict[str, str]]:
         license_url = str(config.get("licenseUrl", config.get("license_url", ""))).strip()
         if not license_url:
             continue
+        playback_type = str(config.get("playbackType", config.get("playback_type", ""))).strip().lower()
+        if playback_type not in ("", "m3u8", "flv", "dash"):
+            playback_type = ""
         normalized.append(
             {
                 "drmType": drm_type,
@@ -559,12 +601,17 @@ def normalize_drm_configs(item: dict[str, object]) -> list[dict[str, str]]:
                 "certificateUrl": str(config.get("certificateUrl", config.get("certificate_url", ""))).strip(),
                 "licenseHeaders": str(config.get("licenseHeaders", config.get("license_headers", ""))).strip(),
                 "pssh": str(config.get("pssh", "")).strip(),
+                "playbackUrl": str(config.get("playbackUrl", config.get("playback_url", ""))).strip(),
+                "playbackType": playback_type,
             }
         )
 
     legacy_type = str(item.get("drmType", item.get("drm_type", ""))).strip().lower()
     legacy_license = str(item.get("licenseUrl", item.get("license_url", ""))).strip()
     if legacy_type in ("widevine", "fairplay") and legacy_license:
+        legacy_playback_type = str(item.get("playbackType", item.get("playback_type", ""))).strip().lower()
+        if legacy_playback_type not in ("", "m3u8", "flv", "dash"):
+            legacy_playback_type = ""
         has_legacy = any(config["drmType"] == legacy_type for config in normalized)
         if not has_legacy:
             normalized.append(
@@ -574,6 +621,8 @@ def normalize_drm_configs(item: dict[str, object]) -> list[dict[str, str]]:
                     "certificateUrl": str(item.get("certificateUrl", item.get("certificate_url", ""))).strip(),
                     "licenseHeaders": str(item.get("licenseHeaders", item.get("license_headers", ""))).strip(),
                     "pssh": str(item.get("pssh", "")).strip(),
+                    "playbackUrl": str(item.get("playbackUrl", item.get("playback_url", ""))).strip(),
+                    "playbackType": legacy_playback_type,
                 }
             )
     return normalized
@@ -607,6 +656,8 @@ def normalize_links(raw: object) -> list[dict[str, object]]:
                 "certificateUrl": str(first_drm.get("certificateUrl", "")),
                 "licenseHeaders": str(first_drm.get("licenseHeaders", "")),
                 "pssh": str(first_drm.get("pssh", "")),
+                "playbackUrl": str(first_drm.get("playbackUrl", "")),
+                "playbackType": str(first_drm.get("playbackType", "")),
             }
         )
     return normalized
@@ -753,6 +804,266 @@ def dash_manifest_drm_types(text: str) -> set[str]:
     if "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed" in lower or "com.widevine" in lower:
         types.add("widevine")
     return types
+
+
+class NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_NO_REDIRECT_OPENER = build_opener(NoRedirectHandler)
+
+
+def reject_private_http_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise AppError("invalid_request", "invalid manifest url")
+    hostname = parsed.hostname.strip().lower().rstrip(".")
+    if hostname in {"localhost", "ip6-localhost", "ip6-loopback"}:
+        raise AppError("invalid_request", "private manifest host is not allowed")
+    try:
+        candidates = [ipaddress.ip_address(hostname.strip("[]"))]
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            raise AppError("upstream_request_failed", f"DNS lookup failed: {hostname}") from exc
+        candidates = []
+        for info in infos:
+            sockaddr = info[4]
+            if not sockaddr:
+                continue
+            try:
+                candidates.append(ipaddress.ip_address(sockaddr[0]))
+            except ValueError:
+                continue
+    if not candidates:
+        raise AppError("upstream_request_failed", f"DNS lookup returned no usable address: {hostname}")
+    for address in candidates:
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+        ):
+            raise AppError("invalid_request", f"private manifest address is not allowed: {address}")
+
+
+def fetch_manifest_text(url: str, *, limit: int = 512 * 1024) -> tuple[str, int | None, str]:
+    headers = {
+        "User-Agent": "StreamHall/1.0",
+        "Accept": "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, text/plain;q=0.8, */*;q=0.6",
+    }
+    current_url = url
+    for _ in range(4):
+        reject_private_http_url(current_url)
+        request = Request(current_url, headers=headers)
+        try:
+            with _NO_REDIRECT_OPENER.open(request, timeout=STREAM_PROBE_TIMEOUT) as resp:
+                final_url = resp.geturl() or current_url
+                reject_private_http_url(final_url)
+                status_code = int(getattr(resp, "status", resp.getcode()) or 0)
+                content_type = resp.headers.get("Content-Type", "")
+                data = resp.read(limit)
+                return decode_probe_text(data), status_code, content_type
+        except HTTPError as exc:
+            if exc.code in (301, 302, 303, 307, 308):
+                location = exc.headers.get("Location", "").strip()
+                if not location:
+                    raise
+                current_url = urljoin(current_url, location)
+                continue
+            raise
+    raise AppError("upstream_request_failed", "too many manifest redirects")
+
+
+def hls_attribute_value(line: str, name: str) -> str:
+    match = re.search(rf'(?:^|,){re.escape(name)}=("([^"]*)"|[^,]*)', line, re.IGNORECASE)
+    if not match:
+        return ""
+    value = match.group(2) if match.group(2) is not None else match.group(1)
+    return value.strip().strip('"')
+
+
+def first_url_matching(text: str, pattern: str) -> str:
+    match = re.search(pattern, text, re.IGNORECASE)
+    return match.group(0) if match else ""
+
+
+def brightcove_account_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    patterns = (
+        r"/manifest/v1/hls/v\d+/fairplay/(\d+)/",
+        r"/manifest/v1/dash/[^/]+/[^/]+/(\d+)/",
+        r"/license/v1/[^/]+/[^/]+/(\d+)(?:/|$)",
+        r"/license/v1/fairplay_app_cert/(\d+)(?:/|$)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, parsed.path)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def discover_dash_drm(url: str, text: str) -> list[dict[str, str]]:
+    discovered: list[dict[str, str]] = []
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return discovered
+
+    def local_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].lower()
+
+    content_nodes = [node for node in root.iter() if local_name(node.tag) == "contentprotection"]
+    for node in content_nodes:
+        scheme = str(node.attrib.get("schemeIdUri", "")).lower()
+        if "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed" not in scheme and "widevine" not in scheme:
+            continue
+        license_url = ""
+        for key, value in node.attrib.items():
+            if key.rsplit("}", 1)[-1] == "licenseAcquisitionUrl":
+                license_url = str(value).strip()
+                break
+        if not license_url:
+            license_url = first_url_matching(ET.tostring(node, encoding="unicode"), r"https?://[^\s\"'<>]+/license/v1/cenc/widevine/[^\s\"'<>]+")
+        pssh = ""
+        for child in node.iter():
+            if local_name(child.tag) == "pssh" and child.text:
+                pssh = child.text.strip()
+                break
+        discovered.append(
+            {
+                "drmType": "widevine",
+                "licenseUrl": license_url,
+                "certificateUrl": "",
+                "pssh": pssh,
+                "playbackUrl": url,
+                "playbackType": "dash",
+            }
+        )
+    return [item for item in discovered if item.get("licenseUrl")]
+
+
+def discover_hls_drm(url: str, text: str, *, include_variants: bool = True) -> list[dict[str, str]]:
+    discovered: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add_item(item: dict[str, str]) -> None:
+        key = (item.get("drmType", ""), item.get("licenseUrl", ""), item.get("certificateUrl", ""))
+        if key in seen:
+            return
+        seen.add(key)
+        discovered.append(item)
+
+    cert_url = first_url_matching(text, r"https?://[^\s\"'<>]+/license/v1/fairplay_app_cert/[^\s\"'<>]+")
+    account_id = brightcove_account_from_url(url)
+    if not cert_url and account_id and "fairplay" in urlparse(url).path.lower():
+        cert_url = f"https://manifest.prod.boltdns.net/license/v1/fairplay_app_cert/{account_id}"
+
+    direct_license = first_url_matching(text, r"https?://[^\s\"'<>]+/license/v1/fairplay/[^\s\"'<>]+")
+    if direct_license or cert_url:
+        add_item(
+            {
+                "drmType": "fairplay",
+                "licenseUrl": direct_license,
+                "certificateUrl": cert_url,
+                "pssh": "",
+                "playbackUrl": url,
+                "playbackType": "m3u8",
+                "partial": not bool(direct_license),
+            }
+        )
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.upper().startswith("#EXT-X-KEY"):
+            continue
+        keyformat = hls_attribute_value(line, "KEYFORMAT").lower()
+        uri = hls_attribute_value(line, "URI")
+        if "com.apple.streamingkeydelivery" in keyformat or uri.lower().startswith("skd://"):
+            license_url = uri if uri.lower().startswith(("http://", "https://")) else direct_license
+            add_item(
+                {
+                    "drmType": "fairplay",
+                    "licenseUrl": license_url,
+                    "certificateUrl": cert_url,
+                    "pssh": "",
+                    "playbackUrl": url,
+                    "playbackType": "m3u8",
+                    "partial": not bool(license_url),
+                }
+            )
+
+    if include_variants:
+        for variant_url in hls_variant_urls(text, url)[:5]:
+            try:
+                variant_text, _, _ = fetch_manifest_text(variant_url)
+            except Exception:
+                continue
+            for item in discover_hls_drm(url, variant_text, include_variants=False):
+                add_item(item)
+
+    return [item for item in discovered if item.get("licenseUrl") or item.get("certificateUrl")]
+
+
+def hls_variant_urls(text: str, base_url: str) -> list[str]:
+    urls: list[str] = []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().startswith("#EXT-X-STREAM-INF"):
+            for j in range(i + 1, len(lines)):
+                candidate = lines[j].strip()
+                if candidate and not candidate.startswith("#"):
+                    urls.append(urljoin(base_url, candidate))
+                    break
+    return urls
+
+
+def discover_drm_from_url(raw_url: object, type_hint: object = "") -> dict[str, object]:
+    url = str(raw_url or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise AppError("invalid_request", "invalid playback url")
+
+    hint = str(type_hint or "").strip().lower()
+    path = parsed.path.lower()
+    is_hls = hint == "m3u8" or path.endswith(".m3u8")
+    is_dash = hint == "dash" or path.endswith(".mpd")
+    try:
+        text, status_code, content_type = fetch_manifest_text(url)
+    except HTTPError as exc:
+        raise AppError("upstream_http_error", f"HTTP {exc.code}") from exc
+    except (TimeoutError, URLError, OSError) as exc:
+        raise AppError("upstream_request_failed", str(exc)) from exc
+
+    lowered_type = content_type.lower()
+    if not is_hls and ("mpegurl" in lowered_type or "m3u8" in lowered_type or text.lstrip().startswith("#EXTM3U")):
+        is_hls = True
+    if not is_dash and ("dash+xml" in lowered_type or "<MPD" in text[:2048]):
+        is_dash = True
+
+    discovered: list[dict[str, str]] = []
+    if is_dash:
+        discovered.extend(discover_dash_drm(url, text))
+    if is_hls:
+        discovered.extend(discover_hls_drm(url, text))
+
+    unsupported: list[str] = []
+    lower = text.lower()
+    if "9a04f079-9840-4286-ab92-e65be0885f95" in lower or "/playready/" in lower:
+        unsupported.append("playready")
+
+    return {
+        "url": url,
+        "type": "dash" if is_dash else ("m3u8" if is_hls else ""),
+        "status_code": status_code,
+        "content_type": content_type,
+        "drmConfigs": discovered,
+        "unsupported": sorted(set(unsupported)),
+    }
 
 
 def drm_config_types(configs: object) -> set[str]:
@@ -1459,6 +1770,10 @@ class StreamHallHandler(BaseHTTPRequestHandler):
                 self.api_verify_password()
             elif action == "check_player_stream":
                 self.api_check_player_stream()
+            elif action == "fairplay_license":
+                self.api_fairplay_license(parse_qs(parsed.query))
+            elif action == "widevine_license":
+                self.api_widevine_license(parse_qs(parsed.query))
             elif action == "viewer_start":
                 self.api_viewer_start()
             elif action == "viewer_heartbeat":
@@ -1513,6 +1828,9 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             elif action == "check_stream_url":
                 self.require_admin()
                 self.api_check_stream_url()
+            elif action == "discover_drm":
+                self.require_admin()
+                self.api_discover_drm()
             elif action == "check_stream":
                 self.require_admin()
                 self.api_check_stream()
@@ -1696,6 +2014,181 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if row["stream_password"] and not hmac.compare_digest(row["stream_password"], password):
             raise AppError("auth_incorrect_password")
         self.send_json({"status": "success", "data": self.check_stream_row(row)})
+
+    def api_fairplay_license(self, query: dict[str, list[str]]) -> None:
+        stream_ref = query.get("id", [""])[0]
+        viewer_token = self.headers.get("X-StreamHall-Viewer-Token", "").strip()
+        try:
+            link_index = int(query.get("link", ["-1"])[0])
+            drm_index = int(query.get("drm", ["-1"])[0])
+            variant_index = int(query.get("variant", ["-1"])[0])
+        except ValueError:
+            raise AppError("invalid_request")
+        if link_index < 0 or drm_index < 0:
+            raise AppError("invalid_request")
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0 or length > 1024 * 1024:
+            raise AppError("invalid_request")
+        spc_body = self.rfile.read(length)
+        with db() as conn:
+            row = find_stream(conn, stream_ref)
+        if not row or int(row["is_enabled"] or 0) != 1:
+            raise AppError("stream_not_found_or_disabled")
+        if not verify_viewer_token(viewer_token, int(row["id"])):
+            raise AppError("auth_required")
+        try:
+            links = normalize_links(json.loads(row["links_json"] or "[]"))
+        except json.JSONDecodeError:
+            links = []
+        if link_index >= len(links):
+            raise AppError("invalid_request")
+        link_for_drm = links[link_index]
+        variants = link_for_drm.get("variants", [])
+        if variant_index >= 0:
+            if not isinstance(variants, list) or variant_index >= len(variants):
+                raise AppError("invalid_request")
+            variant = variants[variant_index]
+            if not isinstance(variant, dict):
+                raise AppError("invalid_request")
+            link_for_drm = variant
+        drm_configs = link_for_drm.get("drmConfigs", [])
+        if not isinstance(drm_configs, list) or drm_index >= len(drm_configs):
+            raise AppError("invalid_request")
+        drm_config = drm_configs[drm_index]
+        if not isinstance(drm_config, dict):
+            raise AppError("invalid_request")
+        if str(drm_config.get("drmType", "")).lower() != "fairplay":
+            raise AppError("invalid_request")
+        license_url = str(drm_config.get("licenseUrl", "")).strip()
+        parsed = urlparse(license_url)
+        if parsed.scheme not in ("http", "https"):
+            raise AppError("invalid_request")
+        request_headers = {
+            "User-Agent": self.headers.get("User-Agent", "StreamHall/1.0"),
+            "Content-Type": "application/json",
+            "Accept": "application/octet-stream, application/json;q=0.9, */*;q=0.8",
+            **parse_header_config(drm_config.get("licenseHeaders", "")),
+        }
+        upstream_payload: dict[str, str] = {
+            "server_playback_context": base64.b64encode(spc_body).decode("ascii")
+        }
+        upstream_body = json.dumps(upstream_payload).encode("utf-8")
+        try:
+            req = Request(license_url, data=upstream_body, headers=request_headers, method="POST")
+            with urlopen(req, timeout=20) as resp:
+                content = resp.read(2 * 1024 * 1024)
+                content_type = resp.headers.get("Content-Type") or "application/octet-stream"
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(content)
+        except HTTPError as exc:
+            error_body = exc.read(4096) if hasattr(exc, "read") else b""
+            status = HTTPStatus(exc.code) if exc.code in HTTPStatus._value2member_map_ else HTTPStatus.BAD_GATEWAY
+            body = error_body or f"upstream HTTP {exc.code}".encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", exc.headers.get("Content-Type") or "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("X-StreamHall-Upstream-Status", str(exc.code))
+            self.end_headers()
+            self.wfile.write(body)
+        except (URLError, TimeoutError, OSError) as exc:
+            body = f"upstream request failed: {exc}".encode("utf-8")
+            self.send_response(HTTPStatus.BAD_GATEWAY)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+
+    def api_widevine_license(self, query: dict[str, list[str]]) -> None:
+        stream_ref = query.get("id", [""])[0]
+        viewer_token = (self.headers.get("X-StreamHall-Viewer-Token", "") or query.get("vt", [""])[0]).strip()
+        try:
+            link_index = int(query.get("link", ["-1"])[0])
+            drm_index = int(query.get("drm", ["-1"])[0])
+        except ValueError:
+            raise AppError("invalid_request", "invalid link or drm index")
+        if link_index < 0 or drm_index < 0:
+            raise AppError("invalid_request", "missing link or drm index")
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0 or length > 1024 * 1024:
+            raise AppError("invalid_request", f"invalid challenge length: {length}")
+        challenge_body = self.rfile.read(length)
+        with db() as conn:
+            row = find_stream(conn, stream_ref)
+        if not row or int(row["is_enabled"] or 0) != 1:
+            raise AppError("stream_not_found_or_disabled")
+        if not verify_viewer_token(viewer_token, int(row["id"])):
+            raise AppError("auth_required", "missing or invalid viewer token")
+        try:
+            links = normalize_links(json.loads(row["links_json"] or "[]"))
+        except json.JSONDecodeError:
+            links = []
+        if link_index >= len(links):
+            raise AppError("invalid_request", f"link index out of range: {link_index}/{len(links)}")
+        drm_configs = links[link_index].get("drmConfigs", [])
+        if not isinstance(drm_configs, list) or drm_index >= len(drm_configs):
+            raise AppError("invalid_request", f"drm index out of range: {drm_index}")
+        drm_config = drm_configs[drm_index]
+        if not isinstance(drm_config, dict):
+            raise AppError("invalid_request", "invalid drm config")
+        if str(drm_config.get("drmType", "")).lower() != "widevine":
+            raise AppError("invalid_request", f"selected drm is not widevine: {drm_config.get('drmType', '')}")
+        license_url = str(drm_config.get("licenseUrl", "")).strip()
+        parsed = urlparse(license_url)
+        if parsed.scheme not in ("http", "https"):
+            raise AppError("invalid_request", "invalid widevine license url")
+        request_headers = {
+            "User-Agent": self.headers.get("User-Agent", "StreamHall/1.0"),
+            "Content-Type": self.headers.get("Content-Type", "application/octet-stream"),
+            "Accept": "application/octet-stream, application/json;q=0.9, */*;q=0.8",
+            **parse_header_config(drm_config.get("licenseHeaders", "")),
+        }
+        for blocked in ("host", "content-length", "connection", "origin", "referer", "cookie"):
+            request_headers.pop(blocked, None)
+            request_headers.pop(blocked.title(), None)
+        try:
+            req = Request(license_url, data=challenge_body, headers=request_headers, method="POST")
+            with urlopen(req, timeout=20) as resp:
+                content = resp.read(2 * 1024 * 1024)
+                content_type = resp.headers.get("Content-Type") or "application/octet-stream"
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(content)
+        except HTTPError as exc:
+            error_body = exc.read(4096) if hasattr(exc, "read") else b""
+            status = HTTPStatus(exc.code) if exc.code in HTTPStatus._value2member_map_ else HTTPStatus.BAD_GATEWAY
+            body = error_body or f"upstream HTTP {exc.code}".encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", exc.headers.get("Content-Type") or "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("X-StreamHall-Upstream-Status", str(exc.code))
+            self.end_headers()
+            self.wfile.write(body)
+        except (URLError, TimeoutError, OSError) as exc:
+            body = f"upstream request failed: {exc}".encode("utf-8")
+            self.send_response(HTTPStatus.BAD_GATEWAY)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
 
     def api_viewer_start(self) -> None:
         body = self.read_json()
@@ -2034,6 +2527,11 @@ class StreamHallHandler(BaseHTTPRequestHandler):
     def api_check_stream_url(self) -> None:
         body = self.read_json()
         result = probe_stream_url(body.get("url", ""), body.get("type", ""), body.get("drmConfigs", body.get("drm_configs", [])))
+        self.send_json({"status": "success", "data": result})
+
+    def api_discover_drm(self) -> None:
+        body = self.read_json()
+        result = discover_drm_from_url(body.get("url", ""), body.get("type", ""))
         self.send_json({"status": "success", "data": result})
 
     def api_check_stream(self) -> None:

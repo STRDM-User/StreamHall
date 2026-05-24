@@ -446,6 +446,13 @@
       grid-column: 1 / -1;
     }
 
+    .link-row.has-drm-playback-url .l-url,
+    .link-row.has-drm-playback-url .l-type {
+      opacity: 0.55;
+      cursor: not-allowed;
+      background-color: rgba(100, 116, 139, 0.12);
+    }
+
     .link-drm-list {
       display: grid;
       gap: 8px;
@@ -481,8 +488,15 @@
 
     .link-drm-actions {
       display: flex;
+      gap: 8px;
       justify-content: flex-end;
       padding: 0 11px 11px;
+    }
+
+    .drm-discover-btn {
+      padding: 6px 10px;
+      font-size: .82em;
+      white-space: nowrap;
     }
 
     .nav-link-row {
@@ -1981,6 +1995,7 @@
         'btn.add_stream':   '+ 添加',
         'btn.reset_filter': '清空',
         'btn.add_link':     '+ 添加视角',
+        'btn.discover_drm': '自动识别 DRM',
         'btn.save':         '保 存',
         'btn.cancel':       '取 消',
         'btn.delete':       '删除',
@@ -2004,12 +2019,14 @@
         'ph.nav_url':       '#stream-list 或 https://example.com',
         'ph.link_name':     '视角名',
         'ph.link_url':      '链接 (m3u8/flv/mpd)',
+        'ph.main_url_disabled':'已使用 DRM 专用播放链接',
         'ph.key_aes':       'AES-128 Key Hex，可多行: main-video=hex',
         'ph.clearkey':      'ClearKey 信息，如 {"kid":"key"}',
         'ph.license_url':   'DRM License URL',
         'ph.license_url_widevine':'Widevine License URL',
         'ph.license_url_fairplay':'FairPlay License URL',
         'ph.certificate_url':'FairPlay Certificate URL',
+        'ph.drm_playback_url':'DRM 专用播放链接 (可选)',
         'ph.license_headers':'License Headers JSON 或 Header: Value 多行',
         'ph.pssh':          'PSSH，可选，用于记录或诊断',
         // hints
@@ -2077,6 +2094,14 @@
         'msg.copied':       '已复制',
         'msg.no_key':       '请先填写推流码',
         'msg.sort_err':     '排序保存失败',
+        'msg.drm_discovered':'已识别并填入 DRM 配置',
+        'msg.drm_partial':   '已部分识别 DRM 配置，请补全必填项',
+        'msg.drm_not_found': '未在播放链接中识别到可用 DRM 配置',
+        'msg.drm_partial_failed': '部分 DRM 已识别，另有 {count} 个链接识别失败',
+        'msg.drm_discover_failed': 'DRM 自动识别失败',
+        'msg.drm_type_required': '请选择 DRM Method，或清空该 DRM 行',
+        'msg.drm_license_required': 'DRM License URL 为必填项',
+        'msg.drm_cert_required': 'FairPlay Certificate URL 为必填项',
         // confirm/alert
         'confirm.delete':       '确定删除?',
         'confirm.delete_route': '确定删除这个推流码映射?',
@@ -2381,6 +2406,7 @@
         'btn.add_stream':   '+ Add',
         'btn.reset_filter': 'Clear',
         'btn.add_link':     '+ Add Source',
+        'btn.discover_drm': 'Discover DRM',
         'btn.save':         'Save',
         'btn.cancel':       'Cancel',
         'btn.delete':       'Delete',
@@ -2404,12 +2430,14 @@
         'ph.nav_url':       '#stream-list or https://example.com',
         'ph.link_name':     'Source name',
         'ph.link_url':      'URL (m3u8/flv/mpd)',
+        'ph.main_url_disabled':'Using DRM-specific playback URL',
         'ph.key_aes':       'AES-128 Key Hex, multi-line: main-video=hex',
         'ph.clearkey':      'ClearKey JSON, e.g. {"kid":"key"}',
         'ph.license_url':   'DRM License URL',
         'ph.license_url_widevine':'Widevine License URL',
         'ph.license_url_fairplay':'FairPlay License URL',
         'ph.certificate_url':'FairPlay Certificate URL',
+        'ph.drm_playback_url':'DRM-specific playback URL (optional)',
         'ph.license_headers':'License Headers JSON or Header: Value lines',
         'ph.pssh':          'PSSH, optional note for diagnostics',
         // hints
@@ -2477,6 +2505,14 @@
         'msg.copied':       'Copied',
         'msg.no_key':       'Please fill in stream key first',
         'msg.sort_err':     'Failed to save order',
+        'msg.drm_discovered':'DRM config detected and filled',
+        'msg.drm_partial':   'DRM config partially detected, please complete required fields',
+        'msg.drm_not_found': 'No supported DRM config was detected in this playback URL',
+        'msg.drm_partial_failed': 'Some DRM configs were detected, but {count} URL(s) failed',
+        'msg.drm_discover_failed': 'DRM discovery failed',
+        'msg.drm_type_required': 'Select a DRM method, or clear this DRM row',
+        'msg.drm_license_required': 'DRM License URL is required',
+        'msg.drm_cert_required': 'FairPlay Certificate URL is required',
         // confirm/alert
         'confirm.delete':       'Confirm delete?',
         'confirm.delete_route': 'Delete this stream key mapping?',
@@ -2931,13 +2967,44 @@
         if (state !== 'is-checking') el.dataset.probeComplete = '1';
       };
 
-      const getRowDrmConfigs = (row) => Array.from(row.querySelectorAll('.drm-config-row')).map(drmRow => ({
-        drmType: drmRow.querySelector('.l-drm-type')?.value || '',
-        licenseUrl: drmRow.querySelector('.l-license-url')?.value.trim() || '',
-        certificateUrl: drmRow.querySelector('.l-certificate-url')?.value.trim() || '',
-        licenseHeaders: drmRow.querySelector('.l-license-headers')?.value.trim() || '',
-        pssh: drmRow.querySelector('.l-pssh')?.value.trim() || ''
-      })).filter(config => config.drmType && config.licenseUrl);
+      const readDrmConfig = (drmRow) => {
+        const drmType = drmRow.querySelector('.l-drm-type')?.value || '';
+        const config = {
+          drmType,
+          licenseUrl: drmRow.querySelector('.l-license-url')?.value.trim() || '',
+          licenseHeaders: drmRow.querySelector('.l-license-headers')?.value.trim() || '',
+          playbackUrl: drmRow.querySelector('.l-drm-playback-url')?.value.trim() || '',
+          playbackType: drmRow.querySelector('.l-drm-playback-type')?.value || ''
+        };
+        if (drmType === 'fairplay') {
+          config.certificateUrl = drmRow.querySelector('.l-certificate-url')?.value.trim() || '';
+        }
+        if (drmType === 'widevine') {
+          config.pssh = drmRow.querySelector('.l-pssh')?.value.trim() || '';
+        }
+        return config;
+      };
+
+      const getRowDrmConfigs = (row) => Array.from(row.querySelectorAll('.drm-config-row'))
+        .map(readDrmConfig)
+        .filter(config => config.drmType && config.licenseUrl);
+
+      const getRowDrmPlaybackTargets = (row) => Array.from(row.querySelectorAll('.drm-config-row')).map(drmRow => ({
+        row: drmRow,
+        url: drmRow.querySelector('.l-drm-playback-url')?.value.trim() || '',
+        type: drmRow.querySelector('.l-drm-playback-type')?.value || '',
+        drmType: drmRow.querySelector('.l-drm-type')?.value || ''
+      })).filter(item => item.url);
+
+      const getRowProbeTarget = (row) => {
+        const drmPlayback = getRowDrmPlaybackTargets(row)[0];
+        if (drmPlayback) return { url: drmPlayback.url, type: drmPlayback.type || '', drmRow: drmPlayback.row };
+        return {
+          url: row.querySelector('.l-url')?.value.trim() || '',
+          type: row.querySelector('.l-type')?.value || '',
+          drmRow: null
+        };
+      };
 
       const probeUrl = async (url, type = '', drmConfigs = []) => {
         const res = await apiCall('check_stream_url', {
@@ -2950,14 +3017,12 @@
 
       const checkLinkRow = async (row, silent = false) => {
         if (!row || !row.isConnected || row.dataset.probeActive === '1') return;
-        const input = row.querySelector('.l-url');
         const statusEl = row.querySelector('.stream-check-status');
-        const url = input?.value.trim() || '';
+        const { url, type } = getRowProbeTarget(row);
         if (!url) {
           setProbeStatus(statusEl, '', '');
           return;
         }
-        const type = row.querySelector('.l-type')?.value || '';
         const token = `${Date.now()}-${Math.random()}`;
         row.dataset.probeToken = token;
         row.dataset.probeActive = '1';
@@ -2981,8 +3046,8 @@
 
       const scheduleLinkRowCheck = (row, delay = 700) => {
         window.clearTimeout(linkProbeTimers.get(row));
-        const input = row.querySelector('.l-url');
-        if (!input?.value.trim()) {
+        const target = getRowProbeTarget(row);
+        if (!target.url) {
           setProbeStatus(row.querySelector('.stream-check-status'), '', '');
           return;
         }
@@ -2992,7 +3057,7 @@
 
       const checkFormLinks = () => {
         Array.from(els.linksContainer.children).forEach(row => {
-          if (row.querySelector('.l-url')?.value.trim()) checkLinkRow(row, true);
+          if (getRowProbeTarget(row).url) checkLinkRow(row, true);
         });
       };
 
@@ -3893,21 +3958,59 @@
         });
       }, true);
 
+      const validateDrmRequiredFields = () => {
+        for (const linkRow of Array.from(els.linksContainer.children)) {
+          for (const drmRow of Array.from(linkRow.querySelectorAll('.drm-config-row'))) {
+            const drmType = drmRow.querySelector('.l-drm-type')?.value || '';
+            const licenseInput = drmRow.querySelector('.l-license-url');
+            const certificateInput = drmRow.querySelector('.l-certificate-url');
+            const values = [
+              drmType,
+              licenseInput?.value.trim() || '',
+              certificateInput?.value.trim() || '',
+              drmRow.querySelector('.l-license-headers')?.value.trim() || '',
+              drmRow.querySelector('.l-pssh')?.value.trim() || '',
+              drmRow.querySelector('.l-drm-playback-url')?.value.trim() || '',
+              drmRow.querySelector('.l-drm-playback-type')?.value || ''
+            ];
+            if (!values.some(Boolean)) continue;
+            const sourceName = linkRow.querySelector('.l-name')?.value.trim() || 'Default';
+            const fail = (message, input = null) => ({
+              message: `${sourceName}: ${message}`,
+              input: input || drmRow.querySelector('.l-drm-type'),
+              details: linkRow.querySelector('.link-drm-config')
+            });
+            if (!drmType) return fail(t('msg.drm_type_required') || 'Please select a DRM method');
+            if ((drmType === 'widevine' || drmType === 'fairplay') && !licenseInput?.value.trim()) {
+              return fail(t('msg.drm_license_required') || 'DRM License URL is required', licenseInput);
+            }
+            if (drmType === 'fairplay' && !certificateInput?.value.trim()) {
+              return fail(t('msg.drm_cert_required') || 'FairPlay Certificate URL is required', certificateInput);
+            }
+          }
+        }
+        return null;
+      };
+
       els.form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const drmInvalid = validateDrmRequiredFields();
+        if (drmInvalid) {
+          drmInvalid.details?.setAttribute('open', '');
+          drmInvalid.input?.focus();
+          showToast(drmInvalid.message, 'error');
+          return;
+        }
         const links = Array.from(els.linksContainer.children).map(row => {
-          const drmConfigs = Array.from(row.querySelectorAll('.drm-config-row')).map(drmRow => ({
-            drmType: drmRow.querySelector('.l-drm-type')?.value || '',
-            licenseUrl: drmRow.querySelector('.l-license-url')?.value.trim() || '',
-            certificateUrl: drmRow.querySelector('.l-certificate-url')?.value.trim() || '',
-            licenseHeaders: drmRow.querySelector('.l-license-headers')?.value.trim() || '',
-            pssh: drmRow.querySelector('.l-pssh')?.value.trim() || ''
-          })).filter(config => config.drmType && config.licenseUrl);
+          const drmConfigs = Array.from(row.querySelectorAll('.drm-config-row'))
+            .map(readDrmConfig)
+            .filter(config => config.drmType && config.licenseUrl);
           const firstDrm = drmConfigs[0] || {};
+          const fallbackUrl = row.querySelector('.l-url').value.trim() || firstDrm.playbackUrl || '';
           return {
             name: row.querySelector('.l-name').value,
             type: row.querySelector('.l-type').value,
-            url: row.querySelector('.l-url').value,
+            url: fallbackUrl,
             key: row.querySelector('.l-key').value.trim(),
             clearkey: row.querySelector('.l-clearkey').value.trim(),
             drmConfigs,
@@ -3915,7 +4018,9 @@
             licenseUrl: firstDrm.licenseUrl || '',
             certificateUrl: firstDrm.certificateUrl || '',
             licenseHeaders: firstDrm.licenseHeaders || '',
-            pssh: firstDrm.pssh || ''
+            pssh: firstDrm.pssh || '',
+            playbackUrl: firstDrm.playbackUrl || '',
+            playbackType: firstDrm.playbackType || ''
           };
         }).filter(l => l.name && l.url);
 
@@ -3970,6 +4075,7 @@
             <summary>${t('drm.config')}</summary>
             <div class="link-drm-list"></div>
             <div class="link-drm-actions">
+              <button type="button" class="btn-secondary discover-drm-btn drm-discover-btn">${t('btn.discover_drm')}</button>
               <button type="button" class="btn-secondary add-drm-config-btn" style="padding:6px 10px;font-size:.82em;">+ DRM</button>
             </div>
           </details>
@@ -3977,6 +4083,17 @@
         `;
         els.linksContainer.appendChild(div);
         const drmList = div.querySelector('.link-drm-list');
+        const syncMainPlaybackState = () => {
+          const hasDrmPlayback = Array.from(div.querySelectorAll('.l-drm-playback-url')).some(input => input.value.trim());
+          const mainUrl = div.querySelector('.l-url');
+          const mainType = div.querySelector('.l-type');
+          if (mainUrl) {
+            mainUrl.disabled = hasDrmPlayback;
+            mainUrl.placeholder = hasDrmPlayback ? t('ph.main_url_disabled') : t('ph.link_url');
+          }
+          if (mainType) mainType.disabled = hasDrmPlayback;
+          div.classList.toggle('has-drm-playback-url', hasDrmPlayback);
+        };
         const addDrmConfigUI = (config = {}) => {
           const drmTypeValue = String(config.drmType || config.drm_type || '').toLowerCase();
           const selectedType = drmTypeValue === 'fairplay' || drmTypeValue === 'widevine' ? drmTypeValue : '';
@@ -3988,9 +4105,16 @@
               <option value="widevine" ${selectedType === 'widevine' ? 'selected' : ''}>Widevine</option>
               <option value="fairplay" ${selectedType === 'fairplay' ? 'selected' : ''}>FairPlay</option>
             </select>
-            <input class="l-license-url drm-field-enabled" placeholder="${t('ph.license_url')}" value="${escapeAttr(config.licenseUrl || config.license_url || '')}">
-            <input class="l-certificate-url drm-field-fairplay" placeholder="${t('ph.certificate_url')}" value="${escapeAttr(config.certificateUrl || config.certificate_url || '')}">
-            <button type="button" class="btn-danger remove-drm-config-btn drm-remove-btn">×</button>
+            <input class="l-drm-playback-url drm-field-playback" placeholder="${t('ph.drm_playback_url')}" value="${escapeAttr(config.playbackUrl || config.playback_url || '')}">
+            <select class="l-drm-playback-type drm-field-playback">
+              <option value="" ${(config.playbackType || config.playback_type || '') === '' ? 'selected' : ''}>${t('type.auto')}</option>
+              <option value="m3u8" ${(config.playbackType || config.playback_type || '') === 'm3u8' ? 'selected' : ''}>HLS</option>
+              <option value="dash" ${(config.playbackType || config.playback_type || '') === 'dash' ? 'selected' : ''}>DASH</option>
+              <option value="flv" ${(config.playbackType || config.playback_type || '') === 'flv' ? 'selected' : ''}>FLV</option>
+            </select>
+            <button type="button" class="btn-danger remove-drm-config-btn drm-remove-btn">x</button>
+            <input class="l-license-url link-drm-wide drm-field-enabled" placeholder="${t('ph.license_url')}" value="${escapeAttr(config.licenseUrl || config.license_url || '')}">
+            <input class="l-certificate-url link-drm-wide drm-field-fairplay" placeholder="${t('ph.certificate_url')}" value="${escapeAttr(config.certificateUrl || config.certificate_url || '')}">
             <textarea class="l-license-headers link-drm-wide drm-field-enabled" rows="2" placeholder="${t('ph.license_headers')}">${escapeHtml(config.licenseHeaders || config.license_headers || '')}</textarea>
             <textarea class="l-pssh link-drm-wide drm-field-widevine" rows="2" placeholder="${t('ph.pssh')}">${escapeHtml(config.pssh || '')}</textarea>
           `;
@@ -4009,6 +4133,9 @@
             row.querySelectorAll('.drm-field-enabled').forEach(el => {
               el.style.display = type ? '' : 'none';
             });
+            row.querySelectorAll('.drm-field-playback').forEach(el => {
+              el.style.display = '';
+            });
             row.querySelectorAll('.drm-field-fairplay').forEach(el => {
               el.style.display = type === 'fairplay' ? '' : 'none';
             });
@@ -4023,15 +4150,135 @@
             refreshProbe();
           });
           row.querySelectorAll('input, textarea').forEach(input => {
-            input.addEventListener('input', refreshProbe);
-            input.addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
+            input.addEventListener('input', () => {
+              syncMainPlaybackState();
+              refreshProbe();
+            });
+            input.addEventListener('blur', () => {
+              syncMainPlaybackState();
+              scheduleLinkRowCheck(div, 0);
+            });
           });
+          row.querySelector('.l-drm-playback-type')?.addEventListener('change', refreshProbe);
           row.querySelector('.remove-drm-config-btn')?.addEventListener('click', () => {
             row.remove();
+            syncMainPlaybackState();
             refreshProbe();
           });
+          return row;
         };
-        normalizedDrmConfigs.forEach(config => addDrmConfigUI(config));
+        const fillInputIfAvailable = (input, value, overwrite = false) => {
+          if (!input || !value) return;
+          if (overwrite || !input.value.trim()) input.value = value;
+        };
+        const applyDiscoveredDrm = (items, sourceUrl = '', sourceType = '', preferredRow = null) => {
+          const supported = (Array.isArray(items) ? items : [])
+            .filter(item => item && (item.drmType === 'widevine' || item.drmType === 'fairplay'));
+          if (!supported.length) return { applied: 0, partial: false };
+          const mainUrl = div.querySelector('.l-url')?.value.trim() || '';
+          const mainType = div.querySelector('.l-type')?.value || '';
+          let applied = 0;
+          let partial = false;
+          supported.forEach(item => {
+            partial = partial || !!item.partial || !item.licenseUrl || (item.drmType === 'fairplay' && !item.certificateUrl);
+            let target = null;
+            if (preferredRow?.isConnected) {
+              const preferredType = preferredRow.querySelector('.l-drm-type')?.value || '';
+              if (!preferredType || preferredType === item.drmType) target = preferredRow;
+            }
+            if (!target) target = Array.from(drmList.querySelectorAll('.drm-config-row')).find(row => {
+              const rowType = row.querySelector('.l-drm-type')?.value || '';
+              return rowType === item.drmType;
+            });
+            if (!target) target = addDrmConfigUI({ drmType: item.drmType });
+            const typeSelect = target.querySelector('.l-drm-type');
+            if (typeSelect) {
+              typeSelect.value = item.drmType;
+              typeSelect.dispatchEvent(new Event('change'));
+            }
+            fillInputIfAvailable(target.querySelector('.l-license-url'), item.licenseUrl || '', true);
+            fillInputIfAvailable(target.querySelector('.l-certificate-url'), item.certificateUrl || '', true);
+            fillInputIfAvailable(target.querySelector('.l-pssh'), item.pssh || '', true);
+            const itemPlaybackUrl = item.playbackUrl || sourceUrl || '';
+            if (itemPlaybackUrl && itemPlaybackUrl !== mainUrl) {
+              fillInputIfAvailable(target.querySelector('.l-drm-playback-url'), itemPlaybackUrl, true);
+            }
+            const itemPlaybackType = item.playbackType || sourceType || '';
+            const playbackTypeSelect = target.querySelector('.l-drm-playback-type');
+            if (playbackTypeSelect && itemPlaybackType && itemPlaybackUrl !== mainUrl) {
+              playbackTypeSelect.value = itemPlaybackType;
+            } else if (playbackTypeSelect && mainType && itemPlaybackUrl === mainUrl) {
+              playbackTypeSelect.value = '';
+            }
+            applied += 1;
+          });
+          syncMainPlaybackState();
+          scheduleLinkRowCheck(div, 0);
+          return { applied, partial };
+        };
+        const discoverDrmForRow = async () => {
+          const btn = div.querySelector('.discover-drm-btn');
+          const drmTargets = getRowDrmPlaybackTargets(div);
+          const mainTarget = {
+            url: div.querySelector('.l-url')?.value.trim() || '',
+            type: div.querySelector('.l-type')?.value || '',
+            drmRow: null
+          };
+          const targets = drmTargets.length ? drmTargets : (mainTarget.url ? [mainTarget] : []);
+          if (!targets.length) {
+            showToast(t('probe.no_info'), 'error');
+            return;
+          }
+          const original = btn?.textContent || '';
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = '...';
+          }
+          let total = 0;
+          let partial = false;
+          const failedMessages = [];
+          try {
+            for (const target of targets) {
+              try {
+                const res = await apiCall('discover_drm', {
+                  url: target.url,
+                  type: inferLinkType(target.url, target.type)
+                });
+                const result = applyDiscoveredDrm(res.data?.drmConfigs || [], target.url, res.data?.type || target.type, target.row || target.drmRow);
+                total += result.applied || 0;
+                partial = partial || !!result.partial;
+              } catch (e) {
+                const url = target.url || '';
+                const shortUrl = url.length > 72 ? `${url.slice(0, 69)}...` : url;
+                failedMessages.push(`${shortUrl}: ${e.message || e}`);
+              }
+            }
+            div.querySelector('.link-drm-config')?.setAttribute('open', '');
+            if (total && failedMessages.length) {
+              showToast(t('msg.drm_partial_failed').replace('{count}', failedMessages.length), 'info');
+            } else if (total) {
+              showToast(partial ? t('msg.drm_partial') : t('msg.drm_discovered'), partial ? 'info' : 'success');
+            } else if (failedMessages.length) {
+              showToast(`${t('msg.drm_discover_failed')}: ${failedMessages[0]}`, 'error');
+            } else {
+              showToast(t('msg.drm_not_found'), 'error');
+            }
+          } catch (e) {
+            showToast(e.message, 'error');
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = original || t('btn.discover_drm');
+            }
+          }
+        };
+        if (normalizedDrmConfigs.length) {
+          normalizedDrmConfigs.forEach(config => addDrmConfigUI(config));
+        } else {
+          addDrmConfigUI();
+        }
+        syncMainPlaybackState();
+        div.querySelector('.discover-drm-btn')?.addEventListener('click', discoverDrmForRow);
         div.querySelector('.add-drm-config-btn')?.addEventListener('click', () => {
           div.querySelector('.link-drm-config')?.setAttribute('open', '');
           addDrmConfigUI();
