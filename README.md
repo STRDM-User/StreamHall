@@ -29,14 +29,14 @@
 
 - **Public stream list** - Live and archive tabs, password-protected streams, custom site branding, bilingual UI (Chinese / English) with per-language site description
 - **Player** - HLS, FLV, MPEG-DASH playback via ArtPlayer; AES-128 key override and DASH ClearKey support; Widevine and FairPlay DRM playback via Shaka Player (multi-DRM configs per source, Android Telegram WebView detection)
-- **Admin panel** - Add, edit, reorder, enable/disable streams; manage sources; drag-and-drop ordering
+- **Admin panel** - Add, edit, reorder, enable/disable streams; manage sources with per-source labels and proxy mode selection
 - **Viewer analytics** - Session tracking, unique visitors, peak concurrent viewers, average watch duration, device / browser / OS / geography breakdown, real-time dashboard, CSV export
 - **Telegram notifications** - Per-stream push messages on stream start and stop
 - **Stream push** - Local file browser with per-file and per-folder RTMP push management; multi-file folder push with independent stream keys; inline push status and detail modal; remote RTMP push config for external encoders; hidden HLS route proxy (`/h/<slug>`) so real stream keys are never exposed publicly
 - **VOD / file serving** - Signed `/video/` URLs with HTTP Range support (seek-capable); publish any local video file or folder as an archive stream directly from the file browser
-- **HLS proxy** - Signed `/proxy/hls/` routes for cross-origin HLS playback
+- **HLS proxy modes** - Per-source direct, full proxy, or manifest-only proxy modes for balancing source URL exposure, CORS compatibility, and server bandwidth
 - **API key auth** - Generate per-key tokens in the admin panel for programmatic access to all admin and analytics endpoints
-- **Mobile responsive** - Admin panel sidebar, file browser rows, and push directory sidebar all collapse gracefully on narrow screens
+- **Mobile responsive** - Admin panel sidebar, source editor, file browser rows, and push directory sidebar all collapse gracefully on narrow screens
 
 <div align="right">
 
@@ -182,6 +182,17 @@ volumes:
   - ./videos:/app/videos
   - /your/media/path:/app/media/external
 ```
+
+**HLS proxy modes**
+
+Each stream source can choose how external HLS URLs are exposed to viewers:
+
+| Mode | Behavior | Bandwidth impact |
+|---|---|---|
+| `Auto` | Backward-compatible default; external HLS uses the full proxy | StreamHall carries manifest and segment traffic |
+| `Direct` | Player uses the source URL directly | Viewer traffic goes to the source server |
+| `Full proxy` | Manifest, segments, maps, and keys are routed through `/proxy/hls/` | StreamHall carries all HLS media traffic |
+| `Manifest only` | Only the playlist uses StreamHall; segment/key/map URLs are absolute source URLs | Low StreamHall bandwidth; final media URLs remain visible in browser network tools |
 
 <div align="right">
 

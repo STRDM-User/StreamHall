@@ -383,16 +383,72 @@
 
     .link-row {
       display: grid;
-      grid-template-columns: auto 1.2fr 0.8fr 1.8fr 1.4fr 1.6fr auto;
+      grid-template-columns: 24px 1.15fr 0.75fr 0.95fr 1.8fr 1.35fr 1.55fr 42px;
       gap: 8px;
       align-items: start;
       margin-bottom: 10px;
     }
 
+    .link-order-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding-top: 34px;
+      min-width: 0;
+    }
+
+    .link-row .drag-handle {
+      width: 24px;
+      text-align: center;
+      box-sizing: border-box;
+    }
+
+    .link-move-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border-radius: 999px;
+      line-height: 1;
+    }
+
+    .link-field {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .link-field-label {
+      min-height: 1em;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .link-field > input,
+    .link-field > select,
+    .link-field > textarea,
+    .link-row .url-field,
+    .link-row .url-field input {
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
     .link-remove-btn {
-      grid-column: -1;
+      grid-column: 8 / 9;
       grid-row: 1 / -1;
       align-self: center;
+      width: 42px;
+      padding-left: 0;
+      padding-right: 0;
       min-height: 42px;
     }
 
@@ -995,6 +1051,21 @@
         grid-column: 1 / -1;
       }
 
+      .link-order-controls {
+        padding-top: 0;
+        justify-content: flex-start;
+      }
+
+      .link-move-btn {
+        display: inline-flex;
+      }
+
+      .link-remove-btn {
+        grid-column: 1 / -1;
+        grid-row: auto;
+        width: 100%;
+      }
+
       .link-row .link-drm-grid {
         grid-template-columns: 1fr;
       }
@@ -1238,8 +1309,12 @@
     .drag-handle:active { cursor:grabbing; }
     .stream-row.drag-over { outline:2px solid var(--blue); outline-offset:-2px; border-radius:6px; }
     .stream-row.dragging { opacity:.35; }
+    .stream-row.touch-dragging { opacity:.72; outline:2px solid var(--blue); outline-offset:-2px; border-radius:6px; }
+    .stream-row.touch-drag-over { outline:2px dashed var(--blue); outline-offset:-2px; border-radius:6px; }
     .link-row.drag-over { outline:2px solid var(--blue); outline-offset:-2px; border-radius:6px; }
     .link-row.dragging { opacity:.35; }
+    .link-row.touch-dragging { opacity:.72; outline:2px solid var(--blue); outline-offset:-2px; border-radius:6px; }
+    .link-row.touch-drag-over { outline:2px dashed var(--blue); outline-offset:-2px; border-radius:6px; }
     .modal-close-btn { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; padding:2px 6px; line-height:1; box-shadow:none; transform:none !important; }
     .modal-close-btn:hover { color:var(--text); filter:none; }
     .geo-section { border:1px solid var(--line); border-radius:8px; background:var(--panel); backdrop-filter:blur(14px); padding:20px 22px; margin-top:20px; }
@@ -1964,6 +2039,12 @@
         'form.stream_name': '直播名称',
         'form.stream_pw':   '访问密码 (留空则公开)',
         'form.stream_type': '直播类型',
+        'form.link_name':   '视角名称',
+        'form.link_type':   '类型',
+        'form.proxy_mode':  '代理模式',
+        'form.link_url':    '播放链接',
+        'form.key_override':'Key Override',
+        'form.clearkey':    'ClearKey 信息',
         'form.hide_home':   '不在主页显示',
         // section headings
         'h3.security':      '安全设置',
@@ -2019,6 +2100,7 @@
         'ph.nav_url':       '#stream-list 或 https://example.com',
         'ph.link_name':     '视角名',
         'ph.link_url':      '链接 (m3u8/flv/mpd)',
+        'ph.proxy_mode':    '代理模式',
         'ph.main_url_disabled':'已使用 DRM 专用播放链接',
         'ph.key_aes':       'AES-128 Key Hex，可多行: main-video=hex',
         'ph.clearkey':      'ClearKey 信息，如 {"kid":"key"}',
@@ -2036,7 +2118,6 @@
         'hint.tg_vars':     '可用变量：{title}、{url}、{site_title}、{time}、{status}、{stream_id}、{public_id}、{link_name}、{source_url} &nbsp;·&nbsp; 支持 HTML',
         'hint.obs_rtmp':    '推流端使用 RTMP 推流到服务器，播放器使用 SRS 输出的 HLS 或 FLV 地址。',
         'hint.obs_routes':  '新增自定义推流码后，系统会生成不可反推的公开 HLS/FLV 地址。推流端仍使用真实推流码推流。',
-        'hint.links':       '填写格式：视角名称 | 类型 | 播放链接 | Key Override | ClearKey 信息',
         'drm.config':       'DRM 播放授权',
         'drm.none':         '无 DRM',
         'hint.footer_example': '示例：## 联系方式\n- [项目主页](https://example.com)',
@@ -2111,6 +2192,10 @@
         'theme.to_light':   '切换明亮模式',
         // type selector
         'type.auto':        '自动',
+        'proxy.auto':       '自动',
+        'proxy.direct':     '直连',
+        'proxy.full':       '完整代理',
+        'proxy.manifest':   '仅 Manifest',
         // OBS link names
         'obs.local_hls':    '本地 HLS',
         'obs.local_flv':    '本地 FLV',
@@ -2375,6 +2460,12 @@
         'form.stream_name': 'Stream Name',
         'form.stream_pw':   'Password (empty = public)',
         'form.stream_type': 'Stream Type',
+        'form.link_name':   'Name',
+        'form.link_type':   'Type',
+        'form.proxy_mode':  'Proxy mode',
+        'form.link_url':    'Playback URL',
+        'form.key_override':'Key Override',
+        'form.clearkey':    'ClearKey',
         'form.hide_home':   'Hide from homepage',
         // section headings
         'h3.security':      'Security',
@@ -2430,6 +2521,7 @@
         'ph.nav_url':       '#stream-list or https://example.com',
         'ph.link_name':     'Source name',
         'ph.link_url':      'URL (m3u8/flv/mpd)',
+        'ph.proxy_mode':    'Proxy mode',
         'ph.main_url_disabled':'Using DRM-specific playback URL',
         'ph.key_aes':       'AES-128 Key Hex, multi-line: main-video=hex',
         'ph.clearkey':      'ClearKey JSON, e.g. {"kid":"key"}',
@@ -2447,7 +2539,6 @@
         'hint.tg_vars':     'Variables: {title}, {url}, {site_title}, {time}, {status}, {stream_id}, {public_id}, {link_name}, {source_url} &nbsp;·&nbsp; HTML supported',
         'hint.obs_rtmp':    'The encoder pushes via RTMP to the server; the player uses HLS or FLV from SRS.',
         'hint.obs_routes':  'Adding a custom stream key generates a public HLS/FLV URL that cannot be reverse-engineered.',
-        'hint.links':       'Format: name | type | URL | Key Override | ClearKey',
         'drm.config':       'DRM license',
         'drm.none':         'No DRM',
         'hint.footer_example': 'Example: ## Contact\n- [Project page](https://example.com)',
@@ -2522,6 +2613,10 @@
         'theme.to_light':   'Switch to light mode',
         // type selector
         'type.auto':        'Auto',
+        'proxy.auto':       'Auto',
+        'proxy.direct':     'Direct',
+        'proxy.full':       'Full proxy',
+        'proxy.manifest':   'Manifest only',
         // OBS link names
         'obs.local_hls':    'Local HLS',
         'obs.local_flv':    'Local FLV',
@@ -3890,8 +3985,121 @@
       function setupDragHandles() {
         let dragSrc = null;
         let _dragFromHandle = false;
+        let touchDrag = null;
+        const clearTouchDragMarks = () => {
+          els.list.querySelectorAll('.stream-row').forEach(r => r.classList.remove('touch-dragging', 'touch-drag-over'));
+        };
+        const saveOrder = async (label) => {
+          const newIds = [...els.list.querySelectorAll(`.stream-row[data-label="${label}"]`)]
+            .map(r => Number(r.dataset.id));
+          try {
+            await apiCall('reorder_streams', { label, ids: newIds });
+            newIds.forEach((id, idx) => {
+              const s = allStreams.find(x => x.id === id);
+              if (s) s.sort_order = idx;
+            });
+          } catch (err) {
+            showToast(t('msg.sort_err') + '：' + err.message, 'error');
+            renderList();
+          }
+        };
+        const moveRowByPoint = (draggedRow, clientY) => {
+          const label = draggedRow.dataset.label;
+          const rows = Array.from(els.list.querySelectorAll(`.stream-row[data-label="${label}"]`)).filter(row => row !== draggedRow);
+          let target = null;
+          for (const row of rows) {
+            const rect = row.getBoundingClientRect();
+            if (clientY < rect.top + rect.height / 2) {
+              target = row;
+              break;
+            }
+          }
+          if (target) els.list.insertBefore(draggedRow, target);
+          else if (rows.length) els.list.insertBefore(draggedRow, rows[rows.length - 1].nextSibling);
+          clearTouchDragMarks();
+          draggedRow.classList.add('touch-dragging');
+          if (target) target.classList.add('touch-drag-over');
+        };
         els.list.querySelectorAll('.stream-row').forEach(row => {
-          row.querySelector('.drag-handle')?.addEventListener('mousedown', () => { _dragFromHandle = true; });
+          const handle = row.querySelector('.drag-handle');
+          handle?.addEventListener('mousedown', () => { _dragFromHandle = true; });
+          if (handle) {
+            handle.style.touchAction = 'none';
+            const beginTouchDrag = (pointerId = null) => {
+              touchDrag = { row, pointerId, label: row.dataset.label };
+              row.classList.add('touch-dragging');
+            };
+            const updateTouchDrag = (clientY) => {
+              if (!touchDrag || touchDrag.row !== row) return;
+              moveRowByPoint(row, clientY);
+            };
+            const finishTouchDragByLabel = async (label) => {
+              touchDrag = null;
+              clearTouchDragMarks();
+              await saveOrder(label);
+            };
+            const cancelTouchDrag = () => {
+              touchDrag = null;
+              clearTouchDragMarks();
+              renderList();
+            };
+            if (window.PointerEvent) {
+            handle.addEventListener('pointerdown', (event) => {
+              if (event.pointerType === 'mouse') return;
+              event.preventDefault();
+              beginTouchDrag(event.pointerId);
+              try { handle.setPointerCapture(event.pointerId); } catch (e) {}
+              const onMove = (moveEvent) => {
+                if (!touchDrag || touchDrag.pointerId !== moveEvent.pointerId || touchDrag.row !== row) return;
+                moveEvent.preventDefault();
+                updateTouchDrag(moveEvent.clientY);
+              };
+              const onUp = async (upEvent) => {
+                if (!touchDrag || touchDrag.pointerId !== upEvent.pointerId || touchDrag.row !== row) return;
+                const label = touchDrag.label;
+                document.removeEventListener('pointermove', onMove, true);
+                document.removeEventListener('pointerup', onUp, true);
+                document.removeEventListener('pointercancel', onCancel, true);
+                try { handle.releasePointerCapture(upEvent.pointerId); } catch (e) {}
+                await finishTouchDragByLabel(label);
+              };
+              const onCancel = (cancelEvent) => {
+                if (!touchDrag || touchDrag.pointerId !== cancelEvent.pointerId || touchDrag.row !== row) return;
+                document.removeEventListener('pointermove', onMove, true);
+                document.removeEventListener('pointerup', onUp, true);
+                document.removeEventListener('pointercancel', onCancel, true);
+                try { handle.releasePointerCapture(cancelEvent.pointerId); } catch (e) {}
+                cancelTouchDrag();
+              };
+              document.addEventListener('pointermove', onMove, true);
+              document.addEventListener('pointerup', onUp, true);
+              document.addEventListener('pointercancel', onCancel, true);
+            });
+            } else {
+              handle.addEventListener('touchstart', (event) => {
+                const touch = event.touches[0];
+                if (!touch) return;
+                event.preventDefault();
+                beginTouchDrag();
+              }, { passive: false });
+              handle.addEventListener('touchmove', (event) => {
+                const touch = event.touches[0];
+                if (!touch || !touchDrag || touchDrag.row !== row) return;
+                event.preventDefault();
+                updateTouchDrag(touch.clientY);
+              }, { passive: false });
+              handle.addEventListener('touchend', async (event) => {
+                if (!touchDrag || touchDrag.row !== row) return;
+                event.preventDefault();
+                await finishTouchDragByLabel(touchDrag.label);
+              }, { passive: false });
+              handle.addEventListener('touchcancel', (event) => {
+                if (!touchDrag || touchDrag.row !== row) return;
+                event.preventDefault();
+                cancelTouchDrag();
+              }, { passive: false });
+            }
+          }
           row.addEventListener('dragstart', e => {
             if (!_dragFromHandle) { e.preventDefault(); return; }
             dragSrc = row;
@@ -3919,19 +4127,7 @@
             const dstIdx = [...els.list.children].indexOf(row);
             if (srcIdx < dstIdx) els.list.insertBefore(dragSrc, row.nextSibling);
             else els.list.insertBefore(dragSrc, row);
-            const label = row.dataset.label;
-            const newIds = [...els.list.querySelectorAll(`.stream-row[data-label="${label}"]`)]
-              .map(r => Number(r.dataset.id));
-            try {
-              await apiCall('reorder_streams', { label, ids: newIds });
-              newIds.forEach((id, idx) => {
-                const s = allStreams.find(x => x.id === id);
-                if (s) s.sort_order = idx;
-              });
-            } catch (err) {
-              showToast(t('msg.sort_err') + '：' + err.message, 'error');
-              renderList();
-            }
+            await saveOrder(row.dataset.label);
           });
         });
       }
@@ -4010,6 +4206,7 @@
           return {
             name: row.querySelector('.l-name').value,
             type: row.querySelector('.l-type').value,
+            proxyMode: row.querySelector('.l-proxy-mode')?.value || 'auto',
             url: fallbackUrl,
             key: row.querySelector('.l-key').value.trim(),
             clearkey: row.querySelector('.l-clearkey').value.trim(),
@@ -4044,10 +4241,92 @@
 
       let _linkDragSrc = null;
       let _linkDragFromHandle = false;
+      let _linkTouchDrag = null;
 
-      const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '', drmType = '', licenseUrl = '', licenseHeaders = '', pssh = '', certificateUrl = '', drmConfigs = []) => {
+      const clearLinkTouchDragMarks = () => {
+        els.linksContainer.querySelectorAll('.link-row').forEach(row => {
+          row.classList.remove('touch-dragging', 'touch-drag-over');
+        });
+      };
+
+      const updateLinkMoveButtons = () => {
+        const rows = Array.from(els.linksContainer.querySelectorAll('.link-row'));
+        rows.forEach((row, index) => {
+          const up = row.querySelector('.link-move-up');
+          const down = row.querySelector('.link-move-down');
+          if (up) up.disabled = index === 0;
+          if (down) down.disabled = index === rows.length - 1;
+        });
+      };
+
+      const moveLinkRowStep = (row, direction) => {
+        if (!row || !row.classList.contains('link-row')) return;
+        if (direction < 0) {
+          const prev = row.previousElementSibling;
+          if (prev?.classList.contains('link-row')) {
+            els.linksContainer.insertBefore(row, prev);
+          }
+        } else {
+          const next = row.nextElementSibling;
+          if (next?.classList.contains('link-row')) {
+            els.linksContainer.insertBefore(row, next.nextElementSibling);
+          }
+        }
+        updateLinkMoveButtons();
+      };
+
+      const moveLinkRowByPoint = (draggedRow, clientY) => {
+        const rows = Array.from(els.linksContainer.querySelectorAll('.link-row')).filter(row => row !== draggedRow);
+        let target = null;
+        for (const row of rows) {
+          const rect = row.getBoundingClientRect();
+          if (clientY < rect.top + rect.height / 2) {
+            target = row;
+            break;
+          }
+        }
+        if (target) {
+          els.linksContainer.insertBefore(draggedRow, target);
+        } else {
+          els.linksContainer.appendChild(draggedRow);
+        }
+        clearLinkTouchDragMarks();
+        draggedRow.classList.add('touch-dragging');
+        const next = target || rows[rows.length - 1] || null;
+        if (next && next !== draggedRow) next.classList.add('touch-drag-over');
+        updateLinkMoveButtons();
+      };
+
+      const setupLinkPointerDrag = (row) => {
+        const handle = row.querySelector('.drag-handle');
+        if (!handle || !window.PointerEvent) return;
+        handle.style.touchAction = 'none';
+        handle.addEventListener('pointerdown', (event) => {
+          if (event.pointerType === 'mouse') return;
+          event.preventDefault();
+          _linkTouchDrag = { row, pointerId: event.pointerId };
+          row.classList.add('touch-dragging');
+          try { handle.setPointerCapture(event.pointerId); } catch (e) {}
+        });
+        handle.addEventListener('pointermove', (event) => {
+          if (!_linkTouchDrag || _linkTouchDrag.pointerId !== event.pointerId || _linkTouchDrag.row !== row) return;
+          event.preventDefault();
+          moveLinkRowByPoint(row, event.clientY);
+        });
+        const finish = (event) => {
+          if (!_linkTouchDrag || _linkTouchDrag.pointerId !== event.pointerId || _linkTouchDrag.row !== row) return;
+          try { handle.releasePointerCapture(event.pointerId); } catch (e) {}
+          _linkTouchDrag = null;
+          clearLinkTouchDragMarks();
+        };
+        handle.addEventListener('pointerup', finish);
+        handle.addEventListener('pointercancel', finish);
+      };
+
+      const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '', drmType = '', licenseUrl = '', licenseHeaders = '', pssh = '', certificateUrl = '', drmConfigs = [], proxyMode = 'auto') => {
         const rawDrmType = String(drmType || '').toLowerCase();
         const normalizedDrmType = rawDrmType === 'widevine' || rawDrmType === 'fairplay' ? rawDrmType : '';
+        const normalizedProxyMode = ['auto', 'direct', 'full', 'manifest'].includes(String(proxyMode || '').toLowerCase()) ? String(proxyMode || '').toLowerCase() : 'auto';
         const normalizedDrmConfigs = Array.isArray(drmConfigs) && drmConfigs.length
           ? drmConfigs
           : (normalizedDrmType || licenseUrl || certificateUrl || licenseHeaders || pssh)
@@ -4057,20 +4336,48 @@
         div.className = 'link-row';
         div.draggable = true;
         div.innerHTML = `
-          <span class="drag-handle" draggable="false" style="margin-top:6px;">⠿</span>
-          <input class="l-name" placeholder="${t('ph.link_name')}" value="${escapeAttr(name)}">
-          <select class="l-type">
-            <option value="" ${type === '' ? 'selected' : ''}>${t('type.auto')}</option>
-            <option value="m3u8" ${type === 'm3u8' ? 'selected' : ''}>HLS</option>
-            <option value="flv" ${type === 'flv' ? 'selected' : ''}>FLV</option>
-            <option value="dash" ${type === 'dash' ? 'selected' : ''}>DASH</option>
-          </select>
-          <div class="url-field">
-            <input class="l-url" placeholder="${t('ph.link_url')}" value="${escapeAttr(url)}">
-            <div class="stream-check-status" aria-live="polite"></div>
+          <div class="link-order-controls">
+            <span class="drag-handle" draggable="false">⠿</span>
+            <button type="button" class="btn-secondary link-move-btn link-move-up" title="Move up" aria-label="Move up">↑</button>
+            <button type="button" class="btn-secondary link-move-btn link-move-down" title="Move down" aria-label="Move down">↓</button>
           </div>
-          <textarea class="l-key" rows="2" placeholder="${t('ph.key_aes')}">${escapeHtml(key)}</textarea>
-          <textarea class="l-clearkey" rows="2" placeholder="${t('ph.clearkey')}">${escapeHtml(clearkey)}</textarea>
+          <div class="link-field">
+            <div class="link-field-label">${t('form.link_name')}</div>
+            <input class="l-name" placeholder="${t('ph.link_name')}" value="${escapeAttr(name)}">
+          </div>
+          <div class="link-field">
+            <div class="link-field-label">${t('form.link_type')}</div>
+            <select class="l-type">
+              <option value="" ${type === '' ? 'selected' : ''}>${t('type.auto')}</option>
+              <option value="m3u8" ${type === 'm3u8' ? 'selected' : ''}>HLS</option>
+              <option value="flv" ${type === 'flv' ? 'selected' : ''}>FLV</option>
+              <option value="dash" ${type === 'dash' ? 'selected' : ''}>DASH</option>
+            </select>
+          </div>
+          <div class="link-field">
+            <div class="link-field-label">${t('form.proxy_mode')}</div>
+            <select class="l-proxy-mode" title="${t('ph.proxy_mode')}">
+              <option value="auto" ${normalizedProxyMode === 'auto' ? 'selected' : ''}>${t('proxy.auto')}</option>
+              <option value="direct" ${normalizedProxyMode === 'direct' ? 'selected' : ''}>${t('proxy.direct')}</option>
+              <option value="full" ${normalizedProxyMode === 'full' ? 'selected' : ''}>${t('proxy.full')}</option>
+              <option value="manifest" ${normalizedProxyMode === 'manifest' ? 'selected' : ''}>${t('proxy.manifest')}</option>
+            </select>
+          </div>
+          <div class="link-field">
+            <div class="link-field-label">${t('form.link_url')}</div>
+            <div class="url-field">
+              <input class="l-url" placeholder="${t('ph.link_url')}" value="${escapeAttr(url)}">
+              <div class="stream-check-status" aria-live="polite"></div>
+            </div>
+          </div>
+          <div class="link-field">
+            <div class="link-field-label">${t('form.key_override')}</div>
+            <textarea class="l-key" rows="2" placeholder="${t('ph.key_aes')}">${escapeHtml(key)}</textarea>
+          </div>
+          <div class="link-field">
+            <div class="link-field-label">${t('form.clearkey')}</div>
+            <textarea class="l-clearkey" rows="2" placeholder="${t('ph.clearkey')}">${escapeHtml(clearkey)}</textarea>
+          </div>
           <details class="link-drm-config" ${normalizedDrmConfigs.length ? 'open' : ''}>
             <summary>${t('drm.config')}</summary>
             <div class="link-drm-list"></div>
@@ -4079,7 +4386,7 @@
               <button type="button" class="btn-secondary add-drm-config-btn" style="padding:6px 10px;font-size:.82em;">+ DRM</button>
             </div>
           </details>
-          <button type="button" class="btn-danger link-remove-btn" onclick="this.parentElement.remove()">×</button>
+          <button type="button" class="btn-danger link-remove-btn">×</button>
         `;
         els.linksContainer.appendChild(div);
         const drmList = div.querySelector('.link-drm-list');
@@ -4287,7 +4594,15 @@
         div.querySelector('.l-url').addEventListener('input', () => scheduleLinkRowCheck(div));
         div.querySelector('.l-url').addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
         div.querySelector('.l-type').addEventListener('change', () => scheduleLinkRowCheck(div, 0));
+        div.querySelector('.l-proxy-mode').addEventListener('change', () => scheduleLinkRowCheck(div, 0));
         if (url) scheduleLinkRowCheck(div, 250);
+        div.querySelector('.link-move-up')?.addEventListener('click', () => moveLinkRowStep(div, -1));
+        div.querySelector('.link-move-down')?.addEventListener('click', () => moveLinkRowStep(div, 1));
+        div.querySelector('.link-remove-btn')?.addEventListener('click', () => {
+          div.remove();
+          updateLinkMoveButtons();
+        });
+        setupLinkPointerDrag(div);
         div.querySelector('.drag-handle').addEventListener('mousedown', () => { _linkDragFromHandle = true; });
         div.addEventListener('dragstart', e => {
           if (!_linkDragFromHandle) { e.preventDefault(); return; }
@@ -4317,7 +4632,9 @@
           if (srcIdx < dstIdx) container.insertBefore(_linkDragSrc, div.nextSibling);
           else container.insertBefore(_linkDragSrc, div);
           div.classList.remove('drag-over');
+          updateLinkMoveButtons();
         });
+        updateLinkMoveButtons();
       };
 
       document.getElementById('add-link-btn').onclick = () => addLinkUI();
@@ -4437,7 +4754,7 @@
           els.cancelBtn.classList.remove('hidden');
           els.linksContainer.innerHTML = '';
           const links = JSON.parse(stream.links_json || '[]');
-          links.forEach(l => addLinkUI(l.name, l.url, l.key, l.clearkey, l.type, l.drmType || l.drm_type || '', l.licenseUrl || l.license_url || '', l.licenseHeaders || l.license_headers || '', l.pssh || '', l.certificateUrl || l.certificate_url || '', l.drmConfigs || l.drm_configs || []));
+          links.forEach(l => addLinkUI(l.name, l.url, l.key, l.clearkey, l.type, l.drmType || l.drm_type || '', l.licenseUrl || l.license_url || '', l.licenseHeaders || l.license_headers || '', l.pssh || '', l.certificateUrl || l.certificate_url || '', l.drmConfigs || l.drm_configs || [], l.proxyMode || l.proxy_mode || 'auto'));
           if (links.length === 0) addLinkUI();
         } else {
           resetForm();
@@ -4516,7 +4833,6 @@
         </div>
         <div style="margin-top: 22px;">
           <h3 data-i18n="h3.links">视角配置</h3>
-          <p class="hint" data-i18n="hint.links">填写格式：视角名称 | 类型 | 播放链接 | Key Override | ClearKey 信息</p>
           <div id="links-container"></div>
           <button type="button" id="add-link-btn" class="btn-success" data-i18n="btn.add_link">+ 添加视角</button>
         </div>

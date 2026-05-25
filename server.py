@@ -92,6 +92,7 @@ VIDEO_EXTS = frozenset({".mp4", ".mkv", ".avi", ".flv", ".ts", ".mov", ".wmv", "
 active_pushes: dict[str, dict] = {}
 _pushes_lock = threading.Lock()
 HLS_PROXY_PREFIX = "/proxy/hls"
+HLS_MANIFEST_PROXY_PREFIX = "/proxy/hls-manifest"
 VIEWER_TOKEN_TTL = 300  # seconds
 HLS_URI_RE = re.compile(r'URI="([^"]+)"')  # matches URI="..." attributes in HLS tag lines (e.g. EXT-X-KEY)
 
@@ -457,6 +458,28 @@ def hls_proxy_path(url: str) -> str:
     return f"{HLS_PROXY_PREFIX}/{hls_proxy_url_token(url)}/{encoded}"
 
 
+def hls_manifest_proxy_path(url: str) -> str:
+    encoded = encode_proxy_target(url)
+    return f"{HLS_MANIFEST_PROXY_PREFIX}/{hls_proxy_url_token(url)}/{encoded}"
+
+
+def normalize_proxy_mode(value: object) -> str:
+    mode = str(value or "").strip().lower()
+    return mode if mode in ("auto", "direct", "full", "manifest") else "auto"
+
+
+def playback_url_for_mode(url: str, link: dict[str, object], proxy_mode: str) -> str:
+    parsed = urlparse(url)
+    if not (is_hls_link(link) and parsed.scheme in ("http", "https")):
+        return url
+    mode = normalize_proxy_mode(proxy_mode)
+    if mode == "direct":
+        return url
+    if mode == "manifest":
+        return hls_manifest_proxy_path(url)
+    return hls_proxy_path(url)
+
+
 PLAYABLE_VIDEO_EXTS = frozenset({".mp4", ".mkv", ".mov", ".webm", ".m4v"})
 
 
@@ -499,9 +522,10 @@ def add_playback_urls(links: list[dict[str, object]]) -> list[dict[str, object]]
     for link in links:
         item = dict(link)
         raw_url = str(item.get("url") or "")
-        parsed = urlparse(raw_url)
-        if is_hls_link(item) and parsed.scheme in ("http", "https"):
-            item["playback_url"] = hls_proxy_path(raw_url)
+        proxy_mode = normalize_proxy_mode(item.get("proxyMode", item.get("proxy_mode", "")))
+        item["proxyMode"] = proxy_mode
+        if raw_url:
+            item["playback_url"] = playback_url_for_mode(raw_url, item, proxy_mode)
         drm_configs = item.get("drmConfigs", [])
         if isinstance(drm_configs, list):
             prepared_configs: list[dict[str, object]] = []
@@ -513,9 +537,7 @@ def add_playback_urls(links: list[dict[str, object]]) -> list[dict[str, object]]
                 drm_playback_type = str(config_item.get("playbackType") or "")
                 if drm_playback_url:
                     probe_item = {"url": drm_playback_url, "type": drm_playback_type}
-                    parsed_drm_url = urlparse(drm_playback_url)
-                    if is_hls_link(probe_item) and parsed_drm_url.scheme in ("http", "https"):
-                        config_item["playback_url"] = hls_proxy_path(drm_playback_url)
+                    config_item["playback_url"] = playback_url_for_mode(drm_playback_url, probe_item, proxy_mode)
                 prepared_configs.append(config_item)
             item["drmConfigs"] = prepared_configs
         prepared.append(item)
@@ -641,6 +663,7 @@ def normalize_links(raw: object) -> list[dict[str, object]]:
         link_type = str(item.get("type", "")).strip().lower()
         if link_type not in ("", "m3u8", "flv", "dash"):
             link_type = ""
+        proxy_mode = normalize_proxy_mode(item.get("proxyMode", item.get("proxy_mode", "")))
         drm_configs = normalize_drm_configs(item)
         first_drm = drm_configs[0] if drm_configs else {}
         normalized.append(
@@ -648,6 +671,7 @@ def normalize_links(raw: object) -> list[dict[str, object]]:
                 "name": name,
                 "type": link_type,
                 "url": url,
+                "proxyMode": proxy_mode,
                 "key": str(item.get("key", "")).strip(),
                 "clearkey": str(item.get("clearkey", "")).strip(),
                 "drmConfigs": drm_configs,
@@ -1635,6 +1659,28 @@ def rewrite_external_hls_manifest(manifest: str, base_url: str) -> str:
     return "\n".join(rewritten) + ("\n" if manifest.endswith("\n") else "")
 
 
+def rewrite_external_hls_manifest_direct(manifest: str, base_url: str) -> str:
+    # Manifest-only proxy: expose the manifest through StreamHall, but rewrite
+    # relative media/key/map URLs to absolute upstream URLs so segment traffic
+    # goes directly from the viewer to the source server.
+    def absolute_uri(value: str) -> str:
+        if not value or value.startswith(("data:", "skd:")):
+            return value
+        return urljoin(base_url, value)
+
+    rewritten: list[str] = []
+    for line in manifest.splitlines():
+        text = line.strip()
+        if not text:
+            rewritten.append(line)
+            continue
+        if text.startswith("#"):
+            rewritten.append(HLS_URI_RE.sub(lambda match: f'URI="{absolute_uri(match.group(1))}"', line))
+            continue
+        rewritten.append(absolute_uri(text))
+    return "\n".join(rewritten) + ("\n" if manifest.endswith("\n") else "")
+
+
 def monitor_streams_loop() -> None:
     while True:
         try:
@@ -1661,6 +1707,9 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/h/"):
             self.proxy_obs_route(parsed.path, parsed.query, send_body=True)
             return
+        if parsed.path.startswith(f"{HLS_MANIFEST_PROXY_PREFIX}/"):
+            self.proxy_hls_manifest_route(parsed.path, send_body=True)
+            return
         if parsed.path.startswith(f"{HLS_PROXY_PREFIX}/"):
             self.proxy_hls_route(parsed.path, send_body=True)
             return
@@ -1676,6 +1725,9 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith("/h/"):
             self.proxy_obs_route(parsed.path, parsed.query, send_body=False)
+            return
+        if parsed.path.startswith(f"{HLS_MANIFEST_PROXY_PREFIX}/"):
+            self.proxy_hls_manifest_route(parsed.path, send_body=False)
             return
         if parsed.path.startswith(f"{HLS_PROXY_PREFIX}/"):
             self.proxy_hls_route(parsed.path, send_body=False)
@@ -3242,6 +3294,11 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if not hmac.compare_digest(token, hls_proxy_url_token(target_url)):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
+        try:
+            reject_private_http_url(target_url)
+        except AppError:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
 
         try:
             req = Request(target_url, headers={"User-Agent": "StreamHall/1.0"})
@@ -3273,6 +3330,58 @@ class StreamHallHandler(BaseHTTPRequestHandler):
                     if not chunk:
                         break
                     self.wfile.write(chunk)
+        except HTTPError as exc:
+            self.send_error(HTTPStatus(exc.code) if exc.code in HTTPStatus._value2member_map_ else HTTPStatus.BAD_GATEWAY)
+        except (URLError, TimeoutError, OSError):
+            self.send_error(HTTPStatus.BAD_GATEWAY)
+
+    def proxy_hls_manifest_route(self, request_path: str, send_body: bool = True) -> None:
+        # URL format: /proxy/hls-manifest/<token>/<base64-encoded-url>
+        # This route only proxies the playlist itself. Segment/key/map URLs are
+        # rewritten to absolute upstream URLs, so media bandwidth does not pass
+        # through StreamHall.
+        parts = request_path.strip("/").split("/")
+        if len(parts) != 4 or parts[0] != "proxy" or parts[1] != "hls-manifest":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        token, encoded_url = parts[2], parts[3]
+        try:
+            target_url = decode_proxy_target(encoded_url)
+        except (ValueError, UnicodeDecodeError):
+            self.send_error(HTTPStatus.BAD_REQUEST)
+            return
+        parsed = urlparse(target_url)
+        if parsed.scheme not in ("http", "https"):
+            self.send_error(HTTPStatus.BAD_REQUEST)
+            return
+        if not hmac.compare_digest(token, hls_proxy_url_token(target_url)):
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        try:
+            reject_private_http_url(target_url)
+        except AppError:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+
+        try:
+            req = Request(target_url, headers={"User-Agent": "StreamHall/1.0"})
+            with urlopen(req, timeout=STREAM_PROBE_TIMEOUT) as resp:
+                content_type = resp.headers.get("Content-Type") or mimetypes.guess_type(parsed.path)[0] or "application/octet-stream"
+                body = resp.read(2 * 1024 * 1024)
+                text = decode_probe_text(body)
+                is_manifest = parsed.path.lower().endswith(".m3u8") or "mpegurl" in content_type.lower() or text.lstrip().startswith("#EXTM3U")
+                if not is_manifest:
+                    self.send_error(HTTPStatus.BAD_REQUEST)
+                    return
+                content = rewrite_external_hls_manifest_direct(text, target_url).encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8")
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                if send_body:
+                    self.wfile.write(content)
         except HTTPError as exc:
             self.send_error(HTTPStatus(exc.code) if exc.code in HTTPStatus._value2member_map_ else HTTPStatus.BAD_GATEWAY)
         except (URLError, TimeoutError, OSError):
