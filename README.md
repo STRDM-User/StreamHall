@@ -31,10 +31,10 @@
 - **Player** - HLS, FLV, MPEG-DASH playback via ArtPlayer; AES-128 key override and DASH ClearKey support; Widevine and FairPlay DRM playback via Shaka Player (multi-DRM configs per source, Android Telegram WebView detection)
 - **Admin panel** - Add, edit, reorder, enable/disable streams; manage sources with per-source labels and proxy mode selection
 - **Viewer analytics** - Session tracking, unique visitors, peak concurrent viewers, average watch duration, device / browser / OS / geography breakdown, real-time dashboard, CSV export
-- **Telegram notifications** - Per-stream push messages on stream start and stop
+- **Telegram notifications** - Per-stream push messages on stream start and stop; each source going live fires its own notification, simultaneous go-lives within a configurable window are merged into one message, and brief RTMP reconnects within a grace period are suppressed to avoid spurious stop/start pairs
 - **Stream push** - Local file browser with per-file and per-folder RTMP push management; multi-file folder push with independent stream keys; inline push status and detail modal; remote RTMP push config for external encoders; hidden HLS route proxy (`/h/<slug>`) so real stream keys are never exposed publicly
 - **VOD / file serving** - Signed `/video/` URLs with HTTP Range support (seek-capable); publish any local video file or folder as an archive stream directly from the file browser
-- **HLS proxy modes** - Per-source direct, full proxy, or manifest-only proxy modes for balancing source URL exposure, CORS compatibility, and server bandwidth
+- **HLS proxy modes** - Per-source direct, full proxy, or manifest-only proxy modes for balancing source URL exposure, CORS compatibility, and server bandwidth; full proxy supports upstream cookie forwarding for cookie-authenticated CDNs (e.g. CloudFront signed cookies), with the cookie stored server-side and never exposed in playback URLs
 - **API key auth** - Generate per-key tokens in the admin panel for programmatic access to all admin and analytics endpoints
 - **Mobile responsive** - Admin panel sidebar, source editor, file browser rows, and push directory sidebar all collapse gracefully on narrow screens
 
@@ -149,8 +149,11 @@ Set these environment variables in `docker-compose.yml`:
 | `TZ` | `UTC` | No | Container timezone, e.g. `Asia/Shanghai` |
 | `SRS_HTTP_ORIGIN` | `http://srs:8080` | No | SRS HTTP playback base URL |
 | `STREAM_PROBE_TIMEOUT` | `4` | No | Seconds before aborting a stream URL probe |
+| `HLS_PROXY_TIMEOUT` | `15` | No | Seconds before aborting an upstream HLS manifest/segment proxy request |
 | `STREAM_MONITOR_INTERVAL` | `10` | No | Seconds between stream liveness checks |
 | `TELEGRAM_TIMEOUT` | `6` | No | Seconds before aborting a Telegram API call |
+| `TG_RECONNECT_GRACE_SECS` | `60` | No | Grace period before sending a stop notification; absorbs brief RTMP reconnects (`0` disables) |
+| `TG_START_MERGE_SECS` | `30` | No | Window for merging simultaneous link-online events into one start notification (`0` disables) |
 | `RTMP_HOST` | `srs` | No | Hostname of the SRS container used for local push jobs |
 | `VIDEOS_DIRS` | *(unset)* | No | Comma-separated list of directories exposed in the file browser. Optionally prefix each path with a label: `label:/app/path`. Multiple entries: `movies:/app/movies,shows:/app/shows` |
 
@@ -193,6 +196,8 @@ Each stream source can choose how external HLS URLs are exposed to viewers:
 | `Direct` | Player uses the source URL directly | Viewer traffic goes to the source server |
 | `Full proxy` | Manifest, segments, maps, and keys are routed through `/proxy/hls/` | StreamHall carries all HLS media traffic |
 | `Manifest only` | Only the playlist uses StreamHall; segment/key/map URLs are absolute source URLs | Low StreamHall bandwidth; final media URLs remain visible in browser network tools |
+
+In **Full proxy** mode, a source can also set an **upstream cookie** for CDNs that require cookie-based authentication (e.g. CloudFront signed cookies). StreamHall forwards the cookie on every manifest and segment request. The cookie is stored server-side and referenced via a signed opaque token in proxy URLs, so it is never derivable from a playback or segment URL. Upstream proxy requests reuse pooled HTTP connections to avoid per-request TLS handshake overhead.
 
 <div align="right">
 

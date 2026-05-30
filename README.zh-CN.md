@@ -31,10 +31,10 @@
 - **播放器** - 基于 ArtPlayer，支持 HLS、FLV、MPEG-DASH 播放；支持 AES-128 密钥覆盖及 DASH ClearKey；通过 Shaka Player 支持 Widevine 和 FairPlay DRM 播放（每路播放源可独立配置多 DRM 方案，内置 Android Telegram WebView 检测）
 - **管理后台** - 直播的增删改查、启用/禁用、拖拽排序；多播放源管理，支持逐字段标签和代理模式选择
 - **观看统计** - 会话追踪、独立访客数、峰值并发、平均时长、设备 / 浏览器 / 操作系统 / 地理分布实时看板，支持 CSV 导出
-- **Telegram 推送** - 可按直播单独配置，开播 / 关播自动发送通知
+- **Telegram 推送** - 可按直播单独配置，开播 / 关播自动发送通知；多视角直播下每个视角上线都会独立推送，时间窗口内同时开播的视角会合并为一条消息，RTMP 短暂断线重连在宽限期内不会误触发关播 / 开播通知
 - **推流配置** - 内置文件浏览器，支持单文件和文件夹 RTMP 推流管理；文件夹可同时向多个推流码批量推送独立任务；推流状态内联显示于文件行，详情弹窗提供实时时长、复制地址和停止操作；同时支持远端编码器 RTMP 推流配置；隐藏 HLS 路由代理（`/h/<slug>`），真实推流码不出现在公开地址中
 - **VOD 点播 / 视频服务** - 带 HMAC 签名的 `/video/` URL，支持 HTTP Range 请求（可 seek）；文件浏览器中可直接将视频文件或文件夹发布为归档直播
-- **HLS 代理模式** - 每个播放源可选择直连、完整代理或仅代理 Manifest，在源地址暴露、跨域兼容和服务器带宽之间自行取舍
+- **HLS 代理模式** - 每个播放源可选择直连、完整代理或仅代理 Manifest，在源地址暴露、跨域兼容和服务器带宽之间自行取舍；完整代理模式支持上游 Cookie 转发，可对接依赖 Cookie 鉴权的 CDN（如 CloudFront 签名 Cookie），Cookie 仅存于服务端、不会暴露在播放地址中
 - **API 密钥鉴权** - 在后台生成 Token，可通过 API 密钥对所有管理及统计接口进行程序化访问
 - **移动端适配** - 管理后台侧边栏、视角编辑器、文件浏览器行、推流目录侧边栏均可在窄屏设备上自适应折叠
 
@@ -149,8 +149,11 @@ python server.py
 | `TZ` | `UTC` | 否 | 容器时区，如 `Asia/Shanghai` |
 | `SRS_HTTP_ORIGIN` | `http://srs:8080` | 否 | SRS HTTP 播放基础地址 |
 | `STREAM_PROBE_TIMEOUT` | `4` | 否 | 流地址探测超时秒数 |
+| `HLS_PROXY_TIMEOUT` | `15` | 否 | 上游 HLS manifest / 分片代理请求超时秒数 |
 | `STREAM_MONITOR_INTERVAL` | `10` | 否 | 流存活检测间隔秒数 |
 | `TELEGRAM_TIMEOUT` | `6` | 否 | Telegram API 请求超时秒数 |
+| `TG_RECONNECT_GRACE_SECS` | `60` | 否 | 发送关播通知前的宽限期，用于吸收短暂 RTMP 重连（`0` 关闭） |
+| `TG_START_MERGE_SECS` | `30` | 否 | 合并同时上线视角为一条开播通知的时间窗口（`0` 关闭） |
 | `RTMP_HOST` | `srs` | 否 | 本地推流任务使用的 SRS 容器主机名 |
 | `VIDEOS_DIRS` | *(未设置)* | 否 | 文件浏览器暴露的目录，逗号分隔。可为每个路径加标签前缀：`label:/app/path`。多个示例：`movies:/app/movies,shows:/app/shows` |
 
@@ -193,6 +196,8 @@ volumes:
 | `直连` | 播放器直接使用源站 URL | 观众流量走源服务器 |
 | `完整代理` | manifest、分片、map、key 都通过 `/proxy/hls/` | StreamHall 承担全部 HLS 媒体流量 |
 | `仅 Manifest` | 只有播放列表经过 StreamHall；分片、key、map 改写为源站绝对地址 | StreamHall 带宽较低；最终媒体 URL 仍会出现在浏览器网络请求中 |
+
+**完整代理**模式下，播放源还可以设置**上游 Cookie**，用于对接依赖 Cookie 鉴权的 CDN（如 CloudFront 签名 Cookie）。StreamHall 会在每次 manifest 和分片请求时附带该 Cookie。Cookie 仅存于服务端，并以签名后的不可逆 token 形式嵌入代理地址，因此无法从播放或分片 URL 中还原出来。上游代理请求会复用连接池中的持久 HTTP 连接，避免每次请求都重新进行 TLS 握手。
 
 <div align="right">
 
