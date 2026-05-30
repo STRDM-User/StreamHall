@@ -452,7 +452,8 @@
       min-height: 42px;
     }
 
-    .link-row .link-drm-config {
+    .link-row .link-drm-config,
+    .link-row .link-upstream-auth {
       grid-column: 2 / -2;
       border: 1px solid var(--line);
       border-radius: 7px;
@@ -460,7 +461,8 @@
       overflow: hidden;
     }
 
-    .link-row .link-drm-config > summary {
+    .link-row .link-drm-config > summary,
+    .link-row .link-upstream-auth > summary {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -473,7 +475,8 @@
       list-style: none;
     }
 
-    .link-row .link-drm-config > summary::-webkit-details-marker {
+    .link-row .link-drm-config > summary::-webkit-details-marker,
+    .link-row .link-upstream-auth > summary::-webkit-details-marker {
       display: none;
     }
 
@@ -485,6 +488,26 @@
       color: var(--text);
       font-size: 0.68rem;
       letter-spacing: 0.04em;
+    }
+
+    .link-row .link-upstream-auth > summary::after {
+      content: "Cookie";
+      border-radius: 999px;
+      padding: 2px 7px;
+      background: var(--line);
+      color: var(--text);
+      font-size: 0.68rem;
+      letter-spacing: 0.04em;
+    }
+
+    .link-row .link-upstream-auth > .upstream-auth-body {
+      padding: 0 11px 11px;
+    }
+
+    .link-row .link-upstream-auth > .upstream-auth-body textarea {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 60px;
     }
 
     .link-row .link-drm-grid {
@@ -604,6 +627,12 @@
       background: rgba(220, 38, 38, 0.08);
     }
 
+    .stream-check-status.is-warning,
+    .stream-live-state.is-warning {
+      color: #b45309;
+      background: rgba(245, 158, 11, 0.1);
+    }
+
     :root[data-theme="dark"] .stream-check-status.is-online,
     :root[data-theme="dark"] .stream-live-state.is-online {
       color: var(--mint);
@@ -612,6 +641,11 @@
     :root[data-theme="dark"] .stream-check-status.is-offline,
     :root[data-theme="dark"] .stream-live-state.is-offline {
       color: #fb7185;
+    }
+
+    :root[data-theme="dark"] .stream-check-status.is-warning,
+    :root[data-theme="dark"] .stream-live-state.is-warning {
+      color: #fbbf24;
     }
 
     .obs-grid {
@@ -1047,6 +1081,7 @@
       }
 
       .link-row .link-drm-config,
+      .link-row .link-upstream-auth,
       .link-row .link-drm-wide {
         grid-column: 1 / -1;
       }
@@ -2042,6 +2077,7 @@
         'form.link_name':   '视角名称',
         'form.link_type':   '类型',
         'form.proxy_mode':  '代理模式',
+        'form.upstream_cookie': '上游 Cookie',
         'form.link_url':    '播放链接',
         'form.key_override':'Key Override',
         'form.clearkey':    'ClearKey 信息',
@@ -2101,6 +2137,7 @@
         'ph.link_name':     '视角名',
         'ph.link_url':      '链接 (m3u8/flv/mpd)',
         'ph.proxy_mode':    '代理模式',
+        'ph.upstream_cookie': '粘贴 Cookie 字符串，如 CloudFront-Key-Pair-Id=xxx; CloudFront-Policy=yyy; CloudFront-Signature=zzz',
         'ph.main_url_disabled':'已使用 DRM 专用播放链接',
         'ph.key_aes':       'AES-128 Key Hex，可多行: main-video=hex',
         'ph.clearkey':      'ClearKey 信息，如 {"kid":"key"}',
@@ -2156,6 +2193,7 @@
         'probe.no_info':    '没有监测到推流信息',
         'probe.detecting':  '正在检测推流信息...',
         'probe.detected':   '已检测到推流信息',
+        'probe.cookie_proxy_mismatch': '已检测到推流信号，但当前代理模式不支持 Cookie 转发，观众将无法正常播放，请改为完整代理模式',
         'probe.waiting':    '等待自动检测...',
         'probe.closed':     '直播已关闭',
         'probe.drm_config_missing':'检测到 DRM 流，但缺少匹配的 DRM 配置',
@@ -2463,6 +2501,7 @@
         'form.link_name':   'Name',
         'form.link_type':   'Type',
         'form.proxy_mode':  'Proxy mode',
+        'form.upstream_cookie': 'Upstream Cookie',
         'form.link_url':    'Playback URL',
         'form.key_override':'Key Override',
         'form.clearkey':    'ClearKey',
@@ -2522,6 +2561,7 @@
         'ph.link_name':     'Source name',
         'ph.link_url':      'URL (m3u8/flv/mpd)',
         'ph.proxy_mode':    'Proxy mode',
+        'ph.upstream_cookie': 'Paste cookie string, e.g. CloudFront-Key-Pair-Id=xxx; CloudFront-Policy=yyy; CloudFront-Signature=zzz',
         'ph.main_url_disabled':'Using DRM-specific playback URL',
         'ph.key_aes':       'AES-128 Key Hex, multi-line: main-video=hex',
         'ph.clearkey':      'ClearKey JSON, e.g. {"kid":"key"}',
@@ -2577,6 +2617,7 @@
         'probe.no_info':    'No stream detected',
         'probe.detecting':  'Detecting stream...',
         'probe.detected':   'Stream detected',
+        'probe.cookie_proxy_mismatch': 'Stream signal detected, but the current proxy mode does not forward cookies — viewers will not be able to play. Switch to Full Proxy mode.',
         'probe.waiting':    'Waiting for detection...',
         'probe.closed':     'Stream disabled',
         'probe.drm_config_missing':'DRM stream detected, but matching DRM config is missing',
@@ -3101,11 +3142,12 @@
         };
       };
 
-      const probeUrl = async (url, type = '', drmConfigs = []) => {
+      const probeUrl = async (url, type = '', drmConfigs = [], upstreamCookie = '') => {
         const res = await apiCall('check_stream_url', {
           url,
           type: inferLinkType(url, type),
-          drmConfigs
+          drmConfigs,
+          upstreamCookie
         });
         return res.data || { valid: false, message: t('probe.no_info') };
       };
@@ -3123,12 +3165,15 @@
         row.dataset.probeActive = '1';
         if (!silent) setProbeStatus(statusEl, 'is-checking', t('probe.detecting'));
         try {
-          const result = await probeUrl(url, type, getRowDrmConfigs(row));
+          const upstreamCookie = row.querySelector('.l-upstream-cookie')?.value.trim() || '';
+          const result = await probeUrl(url, type, getRowDrmConfigs(row), upstreamCookie);
           if (!row.isConnected || row.dataset.probeToken !== token) return;
+          const proxyMode = row.querySelector('.l-proxy-mode')?.value || 'auto';
+          const cookieMismatch = result.valid && upstreamCookie && (proxyMode === 'direct' || proxyMode === 'manifest');
           setProbeStatus(
             statusEl,
-            result.valid ? 'is-online' : 'is-offline',
-            result.valid ? t('probe.detected') : (t('probe.' + result.code) || t('probe.no_info'))
+            cookieMismatch ? 'is-warning' : (result.valid ? 'is-online' : 'is-offline'),
+            cookieMismatch ? t('probe.cookie_proxy_mismatch') : (result.valid ? t('probe.detected') : (t('probe.' + result.code) || t('probe.no_info')))
           );
         } catch (e) {
           if (row.isConnected && row.dataset.probeToken === token) {
@@ -3156,11 +3201,24 @@
         });
       };
 
-      const applyProbeResult = (streamId, result) => {
+      const hasCookieProxyMismatch = (stream) => {
+        if (!stream?.links_json) return false;
+        try {
+          const links = JSON.parse(stream.links_json);
+          return Array.isArray(links) && links.some(l => {
+            const cookie = (l.upstreamCookie || l.upstream_cookie || '').trim();
+            const mode = (l.proxyMode || l.proxy_mode || 'auto').toLowerCase();
+            return cookie && (mode === 'direct' || mode === 'manifest');
+          });
+        } catch { return false; }
+      };
+
+      const applyProbeResult = (streamId, result, stream = null) => {
+        const mismatch = result.valid && stream && hasCookieProxyMismatch(stream);
         setSavedProbeStatus(
           streamId,
-          result.valid ? 'is-online' : 'is-offline',
-          result.valid ? t('probe.detected') : (t('probe.' + result.code) || t('probe.no_info'))
+          mismatch ? 'is-warning' : (result.valid ? 'is-online' : 'is-offline'),
+          mismatch ? t('probe.cookie_proxy_mismatch') : (result.valid ? t('probe.detected') : (t('probe.' + result.code) || t('probe.no_info')))
         );
       };
 
@@ -3172,7 +3230,7 @@
         if (showChecking) setSavedProbeStatus(stream.id, 'is-checking', t('probe.detecting'));
         try {
           const res = await apiCall('check_stream', { id: stream.id });
-          applyProbeResult(stream.id, res.data || { valid: false });
+          applyProbeResult(stream.id, res.data || { valid: false }, stream);
         } catch (e) {
           setSavedProbeStatus(stream.id, 'is-offline', t('probe.no_info'));
         }
@@ -3194,7 +3252,7 @@
             try {
               const res = await apiCall('check_stream', { id: stream.id });
               const result = res.data || { valid: false };
-              applyProbeResult(stream.id, result);
+              applyProbeResult(stream.id, result, stream);
             } catch (e) {
               setSavedProbeStatus(stream.id, 'is-offline', t('probe.no_info'));
             }
@@ -4207,6 +4265,7 @@
             name: row.querySelector('.l-name').value,
             type: row.querySelector('.l-type').value,
             proxyMode: row.querySelector('.l-proxy-mode')?.value || 'auto',
+            upstreamCookie: row.querySelector('.l-upstream-cookie')?.value.trim() || '',
             url: fallbackUrl,
             key: row.querySelector('.l-key').value.trim(),
             clearkey: row.querySelector('.l-clearkey').value.trim(),
@@ -4323,7 +4382,7 @@
         handle.addEventListener('pointercancel', finish);
       };
 
-      const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '', drmType = '', licenseUrl = '', licenseHeaders = '', pssh = '', certificateUrl = '', drmConfigs = [], proxyMode = 'auto') => {
+      const addLinkUI = (name = 'Default', url = '', key = '', clearkey = '', type = '', drmType = '', licenseUrl = '', licenseHeaders = '', pssh = '', certificateUrl = '', drmConfigs = [], proxyMode = 'auto', upstreamCookie = '') => {
         const rawDrmType = String(drmType || '').toLowerCase();
         const normalizedDrmType = rawDrmType === 'widevine' || rawDrmType === 'fairplay' ? rawDrmType : '';
         const normalizedProxyMode = ['auto', 'direct', 'full', 'manifest'].includes(String(proxyMode || '').toLowerCase()) ? String(proxyMode || '').toLowerCase() : 'auto';
@@ -4378,6 +4437,12 @@
             <div class="link-field-label">${t('form.clearkey')}</div>
             <textarea class="l-clearkey" rows="2" placeholder="${t('ph.clearkey')}">${escapeHtml(clearkey)}</textarea>
           </div>
+          <details class="link-upstream-auth" ${upstreamCookie ? 'open' : ''}>
+            <summary>${t('form.upstream_cookie')}</summary>
+            <div class="upstream-auth-body">
+              <textarea class="l-upstream-cookie" rows="3" placeholder="${t('ph.upstream_cookie')}">${escapeHtml(upstreamCookie)}</textarea>
+            </div>
+          </details>
           <details class="link-drm-config" ${normalizedDrmConfigs.length ? 'open' : ''}>
             <summary>${t('drm.config')}</summary>
             <div class="link-drm-list"></div>
@@ -4754,7 +4819,7 @@
           els.cancelBtn.classList.remove('hidden');
           els.linksContainer.innerHTML = '';
           const links = JSON.parse(stream.links_json || '[]');
-          links.forEach(l => addLinkUI(l.name, l.url, l.key, l.clearkey, l.type, l.drmType || l.drm_type || '', l.licenseUrl || l.license_url || '', l.licenseHeaders || l.license_headers || '', l.pssh || '', l.certificateUrl || l.certificate_url || '', l.drmConfigs || l.drm_configs || [], l.proxyMode || l.proxy_mode || 'auto'));
+          links.forEach(l => addLinkUI(l.name, l.url, l.key, l.clearkey, l.type, l.drmType || l.drm_type || '', l.licenseUrl || l.license_url || '', l.licenseHeaders || l.license_headers || '', l.pssh || '', l.certificateUrl || l.certificate_url || '', l.drmConfigs || l.drm_configs || [], l.proxyMode || l.proxy_mode || 'auto', l.upstreamCookie || l.upstream_cookie || ''));
           if (links.length === 0) addLinkUI();
         } else {
           resetForm();

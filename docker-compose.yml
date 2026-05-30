@@ -22,6 +22,11 @@ services:
       - ./videos:/app/videos
       # Mount additional directories as needed:
       # - /local/path:/app/media/label
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   postgres:
     image: postgres:16-alpine

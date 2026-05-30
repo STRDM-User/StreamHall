@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import base64
+import http.client
+import queue as _queue_mod
 import socket
 import csv
 import hashlib
@@ -61,8 +63,11 @@ PASSWORD_HASH_ITERATIONS = 240000
 INITIAL_ADMIN_PASSWORD_BYTES = 18
 PUBLIC_ID_BYTES = 9
 STREAM_PROBE_TIMEOUT = float(os.getenv("STREAM_PROBE_TIMEOUT", "4"))
+HLS_PROXY_TIMEOUT = float(os.getenv("HLS_PROXY_TIMEOUT", "15"))
 TELEGRAM_TIMEOUT = float(os.getenv("TELEGRAM_TIMEOUT", "6"))
 STREAM_MONITOR_INTERVAL = max(5, int(os.getenv("STREAM_MONITOR_INTERVAL", "10")))
+TG_RECONNECT_GRACE_SECS = max(0, int(os.getenv("TG_RECONNECT_GRACE_SECS", "60")))
+TG_START_MERGE_SECS = max(0, int(os.getenv("TG_START_MERGE_SECS", "30")))
 SRS_HTTP_ORIGIN = os.getenv("SRS_HTTP_ORIGIN", "http://srs:8080").rstrip("/")
 OBS_ROUTE_SLUG_LENGTH = max(12, int(os.getenv("OBS_ROUTE_SLUG_LENGTH", "22")))
 URL_PATH_SAFE = "/._~!$&'()*+,;=:@"
@@ -91,6 +96,18 @@ VIDEO_EXTS = frozenset({".mp4", ".mkv", ".avi", ".flv", ".ts", ".mov", ".wmv", "
 
 active_pushes: dict[str, dict] = {}
 _pushes_lock = threading.Lock()
+_pending_stop_timers: dict[int, threading.Timer] = {}
+_pending_stop_lock = threading.Lock()
+_pending_start_timers: dict[int, tuple[threading.Timer, list[str]]] = {}
+_pending_start_lock = threading.Lock()
+_upstream_pools: dict[tuple, _queue_mod.Queue] = {}   # (scheme, host, port) -> Queue[conn]
+_upstream_pools_lock = threading.Lock()
+_UPSTREAM_POOL_SIZE = 4
+
+_proxy_cookie_tokens: dict[str, str] = {}   # token_id -> cookie string (server-side only)
+_proxy_cookie_refs: dict[str, str] = {}     # cookie -> cookie_ref (reverse map for stable proxy URLs)
+_proxy_cookie_tokens_lock = threading.Lock()
+_PROXY_COOKIE_TOKEN_MAX = 5000
 HLS_PROXY_PREFIX = "/proxy/hls"
 HLS_MANIFEST_PROXY_PREFIX = "/proxy/hls-manifest"
 VIEWER_TOKEN_TTL = 300  # seconds
@@ -336,6 +353,7 @@ def init_stats_tables(conn) -> None:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_viewer_events_stream_time ON viewer_events(stream_id, event_at)")
+    conn.execute("ALTER TABLE stream_probe_states ADD COLUMN IF NOT EXISTS live_links_json TEXT NOT NULL DEFAULT '[]'")
 
 
 
@@ -425,7 +443,104 @@ def decode_proxy_target(value: str) -> str:
     return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
 
 
-def hls_proxy_url_token(url: str) -> str:
+def _upstream_conn_borrow(scheme: str, host: str, port: int, timeout: float) -> http.client.HTTPConnection:
+    key = (scheme, host, port)
+    with _upstream_pools_lock:
+        if key not in _upstream_pools:
+            _upstream_pools[key] = _queue_mod.Queue(maxsize=_UPSTREAM_POOL_SIZE)
+        pool = _upstream_pools[key]
+    try:
+        conn = pool.get_nowait()
+        conn.timeout = timeout
+        return conn
+    except _queue_mod.Empty:
+        if scheme == "https":
+            return http.client.HTTPSConnection(host, port, timeout=timeout)
+        return http.client.HTTPConnection(host, port, timeout=timeout)
+
+
+def _upstream_conn_return(scheme: str, host: str, port: int, conn: http.client.HTTPConnection) -> None:
+    key = (scheme, host, port)
+    with _upstream_pools_lock:
+        pool = _upstream_pools.get(key)
+    if pool is not None:
+        try:
+            pool.put_nowait(conn)
+            return
+        except _queue_mod.Full:
+            pass
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+def _upstream_fetch(
+    url: str,
+    headers: dict[str, str],
+    timeout: float,
+) -> tuple[http.client.HTTPResponse, http.client.HTTPConnection, str, str, int]:
+    """Fetch URL via a pooled persistent connection.
+    Returns (response, conn, scheme, host, port).
+    Caller must fully consume the response body, then call _upstream_conn_return().
+    On any error the connection is closed automatically."""
+    parsed = urlparse(url)
+    scheme = parsed.scheme.lower()
+    host = parsed.hostname or ""
+    port = int(parsed.port or (443 if scheme == "https" else 80))
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    for attempt in range(2):
+        conn = _upstream_conn_borrow(scheme, host, port, timeout)
+        try:
+            conn.request("GET", path, headers=headers)
+            resp = conn.getresponse()
+            return resp, conn, scheme, host, port
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            if attempt == 0:
+                continue
+            raise
+
+
+def _issue_proxy_cookie_token(cookie: str) -> str:
+    """Return a stable signed opaque reference for this cookie, creating one if needed.
+    The same cookie string always returns the same ref so HLS segment proxy URLs remain
+    stable across manifest re-fetches, preventing spurious ABR resets."""
+    with _proxy_cookie_tokens_lock:
+        if cookie in _proxy_cookie_refs:
+            return _proxy_cookie_refs[cookie]
+        token_id = secrets.token_urlsafe(16)
+        if len(_proxy_cookie_tokens) >= _PROXY_COOKIE_TOKEN_MAX:
+            evicted_id = next(iter(_proxy_cookie_tokens))
+            evicted_cookie = _proxy_cookie_tokens.pop(evicted_id)
+            _proxy_cookie_refs.pop(evicted_cookie, None)
+        _proxy_cookie_tokens[token_id] = cookie
+        ref = f"{token_id}.{sign(f'proxy-cookie-token:{token_id}')}"
+        _proxy_cookie_refs[cookie] = ref
+        return ref
+
+
+def _resolve_proxy_cookie_token(ref: str) -> str:
+    """Verify ref signature and return the stored cookie, or '' if invalid/not found."""
+    if "." not in ref:
+        return ""
+    token_id, sig = ref.split(".", 1)
+    if not hmac.compare_digest(sig, sign(f"proxy-cookie-token:{token_id}")):
+        return ""
+    with _proxy_cookie_tokens_lock:
+        return _proxy_cookie_tokens.get(token_id, "")
+
+
+def hls_proxy_url_token(url: str, cookie_ref: str = "") -> str:
+    # cookie_ref is an opaque token issued by _issue_proxy_cookie_token, not the raw cookie.
+    if cookie_ref:
+        return sign(f"hls-proxy-url:{url}:{cookie_ref}")
     return sign(f"hls-proxy-url:{url}")
 
 
@@ -453,8 +568,13 @@ def verify_viewer_token(token: str, stream_id: int) -> bool:
     return hmac.compare_digest(sig, sign(f"viewer-token:{payload}"))
 
 
-def hls_proxy_path(url: str) -> str:
+def hls_proxy_path(url: str, upstream_cookie: str = "") -> str:
     encoded = encode_proxy_target(url)
+    if upstream_cookie:
+        cookie_ref = _issue_proxy_cookie_token(upstream_cookie)
+        token = hls_proxy_url_token(url, cookie_ref)
+        encoded_ref = base64.urlsafe_b64encode(cookie_ref.encode("utf-8")).decode("ascii").rstrip("=")
+        return f"{HLS_PROXY_PREFIX}/{token}/{encoded}/{encoded_ref}"
     return f"{HLS_PROXY_PREFIX}/{hls_proxy_url_token(url)}/{encoded}"
 
 
@@ -477,7 +597,8 @@ def playback_url_for_mode(url: str, link: dict[str, object], proxy_mode: str) ->
         return url
     if mode == "manifest":
         return hls_manifest_proxy_path(url)
-    return hls_proxy_path(url)
+    upstream_cookie = str(link.get("upstreamCookie", link.get("upstream_cookie", ""))).strip()
+    return hls_proxy_path(url, upstream_cookie)
 
 
 PLAYABLE_VIDEO_EXTS = frozenset({".mp4", ".mkv", ".mov", ".webm", ".m4v"})
@@ -540,6 +661,8 @@ def add_playback_urls(links: list[dict[str, object]]) -> list[dict[str, object]]
                     config_item["playback_url"] = playback_url_for_mode(drm_playback_url, probe_item, proxy_mode)
                 prepared_configs.append(config_item)
             item["drmConfigs"] = prepared_configs
+        # Cookie is already embedded in playback_url; strip it from viewer-facing data.
+        item.pop("upstreamCookie", None)
         prepared.append(item)
     return prepared
 
@@ -672,6 +795,7 @@ def normalize_links(raw: object) -> list[dict[str, object]]:
                 "type": link_type,
                 "url": url,
                 "proxyMode": proxy_mode,
+                "upstreamCookie": str(item.get("upstreamCookie", item.get("upstream_cookie", ""))).strip(),
                 "key": str(item.get("key", "")).strip(),
                 "clearkey": str(item.get("clearkey", "")).strip(),
                 "drmConfigs": drm_configs,
@@ -1145,6 +1269,7 @@ def probe_stream_url(
     raw_url: object,
     type_hint: object = "",
     drm_configs: object | None = None,
+    upstream_cookie: str = "",
 ) -> dict[str, object]:
     url = str(raw_url or "").strip()
     if not url:
@@ -1166,6 +1291,8 @@ def probe_stream_url(
         "User-Agent": "StreamHall/1.0",
         "Accept": "*/*",
     }
+    if upstream_cookie:
+        headers["Cookie"] = upstream_cookie
     if not is_hls and not is_dash:
         headers["Range"] = "bytes=0-4095"
 
@@ -1468,15 +1595,25 @@ def probe_stream_links(row: dict[str, object]) -> dict[str, object]:
         links = normalize_links(json.loads(row["links_json"] or "[]"))
     except json.JSONDecodeError:
         links = []
+    probe_all = int(row.get("tg_notify_enabled", 0) or 0) == 1
+    all_live_names: list[str] = []
+    first_result: dict[str, object] | None = None
     for index, link in enumerate(links):
-        result = probe_stream_url(link["url"], link.get("type", ""), link.get("drmConfigs", []))
+        result = probe_stream_url(link["url"], link.get("type", ""), link.get("drmConfigs", []), link.get("upstreamCookie", ""))
         if result["valid"]:
-            return {
-                **result,
-                "index": index,
-                "url": link["url"],
-                "link_name": link["name"],
-            }
+            all_live_names.append(link["name"])
+            if first_result is None:
+                first_result = {
+                    **result,
+                    "index": index,
+                    "url": link["url"],
+                    "link_name": link["name"],
+                }
+            if not probe_all:
+                break
+    if first_result is not None:
+        first_result["all_live_names"] = all_live_names
+        return first_result
     return stream_probe_response(False)
 
 
@@ -1518,6 +1655,32 @@ def notification_context_for_row(
     }
 
 
+def _send_tg_live_notification(
+    row: dict[str, object],
+    is_live: bool,
+    probe_result: dict[str, object],
+    headers: object | None = None,
+) -> None:
+    if int(row["tg_notify_enabled"] or 0) != 1:
+        return
+    settings = telegram_settings()
+    label = normalize_stream_label(row.get("stream_label", "LIVE")).lower()
+    notify_key   = f"telegram_{label}_notify_{'start' if is_live else 'stop'}"
+    template_key = f"telegram_{label}_{'start' if is_live else 'stop'}_template"
+    status = "start" if is_live else "stop"
+    if settings.get(notify_key, "0") != "1":
+        return
+    text = render_message_template(
+        settings.get(template_key, ""),
+        notification_context_for_row(row, probe_result, status, headers, settings),
+    )
+    stream_id = int(row["id"])
+    try:
+        send_telegram_message(settings, text)
+    except Exception as exc:
+        print(f"Telegram notification failed for stream {stream_id}: {exc}")
+
+
 def maybe_notify_stream_transition(
     row: dict[str, object],
     is_live: bool,
@@ -1525,50 +1688,110 @@ def maybe_notify_stream_transition(
     headers: object | None = None,
 ) -> None:
     stream_id = int(row["id"])
+    current_live_names: list[str] = probe_result.get("all_live_names", []) if is_live else []
+    if is_live and not current_live_names and probe_result.get("link_name"):
+        current_live_names = [str(probe_result["link_name"])]
+
     with db() as conn:
         previous = conn.execute(
-            "SELECT is_live FROM stream_probe_states WHERE stream_id = ?", (stream_id,)
+            "SELECT is_live, live_links_json FROM stream_probe_states WHERE stream_id = ?", (stream_id,)
         ).fetchone()
-        previous_live = None if previous is None else bool(previous["is_live"])
+        previous_is_live = None if previous is None else bool(previous["is_live"])
+        try:
+            previous_live_names: set[str] = set(json.loads((previous["live_links_json"] or "[]") if previous else "[]"))
+        except (json.JSONDecodeError, TypeError):
+            previous_live_names = set()
         conn.execute(
             """
-            INSERT INTO stream_probe_states (stream_id, is_live, updated_at)
-            VALUES (?, ?, ?)
+            INSERT INTO stream_probe_states (stream_id, is_live, live_links_json, updated_at)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(stream_id) DO UPDATE SET
                 is_live = excluded.is_live,
+                live_links_json = excluded.live_links_json,
                 updated_at = excluded.updated_at
             """,
-            (stream_id, 1 if is_live else 0, now()),
+            (stream_id, 1 if is_live else 0, json.dumps(current_live_names), now()),
         )
-    if previous_live == is_live:
-        return
-    if previous_live is None and not is_live:
+
+    if previous_is_live is None and not is_live:
         return
     if int(row["tg_notify_enabled"] or 0) != 1:
         return
 
-    settings = telegram_settings()
-    label = normalize_stream_label(row.get("stream_label", "LIVE")).lower()
-    if is_live:
-        notify_key   = f"telegram_{label}_notify_start"
-        template_key = f"telegram_{label}_start_template"
-        status = "start"
-    else:
-        notify_key   = f"telegram_{label}_notify_stop"
-        template_key = f"telegram_{label}_stop_template"
-        status = "stop"
-    if settings.get(notify_key, "0") != "1":
-        return
-    template = settings.get(template_key, "")
+    newly_live = [n for n in current_live_names if n not in previous_live_names]
 
-    text = render_message_template(
-        template,
-        notification_context_for_row(row, probe_result, status, headers, settings),
-    )
-    try:
-        send_telegram_message(settings, text)
-    except Exception as exc:
-        print(f"Telegram notification failed for stream {stream_id}: {exc}")
+    if is_live:
+        with _pending_stop_lock:
+            stop_timer = _pending_stop_timers.pop(stream_id, None)
+        if stop_timer is not None:
+            stop_timer.cancel()
+            return
+        if not newly_live:
+            return
+        # Schedule start notification with merge window
+        if TG_START_MERGE_SECS <= 0:
+            merged = dict(probe_result, link_name=" & ".join(newly_live))
+            _send_tg_live_notification(row, True, merged, headers)
+            return
+
+        with _pending_start_lock:
+            existing = _pending_start_timers.get(stream_id)
+            if existing:
+                existing[0].cancel()
+                all_names = list(dict.fromkeys(existing[1] + newly_live))
+            else:
+                all_names = list(newly_live)
+
+            def _fire_start() -> None:
+                with _pending_start_lock:
+                    entry = _pending_start_timers.get(stream_id)
+                    if entry is None or entry[0] is not _the_start_timer:
+                        return
+                    del _pending_start_timers[stream_id]
+                merged = dict(probe_result, link_name=" & ".join(all_names))
+                _send_tg_live_notification(row, True, merged, headers)
+
+            _the_start_timer = threading.Timer(TG_START_MERGE_SECS, _fire_start)
+            _the_start_timer.daemon = True
+            _pending_start_timers[stream_id] = (_the_start_timer, all_names)
+            _the_start_timer.start()
+    else:
+        with _pending_start_lock:
+            start_entry = _pending_start_timers.pop(stream_id, None)
+        if start_entry:
+            start_entry[0].cancel()
+
+        if not previous_is_live:
+            return
+
+        if TG_RECONNECT_GRACE_SECS <= 0:
+            _send_tg_live_notification(row, False, probe_result, headers)
+            return
+
+        def _delayed_stop() -> None:
+            with _pending_stop_lock:
+                if _pending_stop_timers.get(stream_id) is not _the_timer:
+                    return
+                del _pending_stop_timers[stream_id]
+            try:
+                with db() as conn:
+                    state = conn.execute(
+                        "SELECT is_live FROM stream_probe_states WHERE stream_id = ?", (stream_id,)
+                    ).fetchone()
+                if state and bool(state["is_live"]):
+                    return
+            except Exception:
+                pass
+            _send_tg_live_notification(row, False, probe_result, headers)
+
+        _the_timer = threading.Timer(TG_RECONNECT_GRACE_SECS, _delayed_stop)
+        _the_timer.daemon = True
+        with _pending_stop_lock:
+            old = _pending_stop_timers.pop(stream_id, None)
+            if old is not None:
+                old.cancel()
+            _pending_stop_timers[stream_id] = _the_timer
+        _the_timer.start()
 
 
 def notify_current_live_if_needed(stream_id: int, headers: object | None = None) -> None:
@@ -1586,11 +1809,25 @@ def notify_current_live_if_needed(stream_id: int, headers: object | None = None)
         label = normalize_stream_label(row.get("stream_label", "LIVE")).lower()
         if settings.get(f"telegram_{label}_notify_start", "0") != "1":
             return
+        live_names = result.get("all_live_names", [result["link_name"]] if result.get("link_name") else [])
+        link_name = " & ".join(live_names) if live_names else result.get("link_name", "")
         text = render_message_template(
             settings.get(f"telegram_{label}_start_template", ""),
-            notification_context_for_row(row, result, "start", headers, settings),
+            notification_context_for_row(row, dict(result, link_name=link_name), "start", headers, settings),
         )
+        # Cancel any start timer the monitor may have already scheduled,
+        # so it doesn't fire a merged notification that re-includes these links.
+        with _pending_start_lock:
+            entry = _pending_start_timers.pop(stream_id, None)
+        if entry:
+            entry[0].cancel()
         send_telegram_message(settings, text)
+        # Mark these links as already-notified so the monitor won't re-send.
+        with db() as conn:
+            conn.execute(
+                "UPDATE stream_probe_states SET live_links_json = ? WHERE stream_id = ?",
+                (json.dumps(live_names), stream_id),
+            )
     except Exception as exc:
         print(f"Telegram current live notification failed for stream {stream_id}: {exc}")
 
@@ -1637,14 +1874,14 @@ def rewrite_hls_manifest(manifest: str, slug: str, stream_key: str) -> str:
     return "\n".join(rewritten) + ("\n" if manifest.endswith("\n") else "")
 
 
-def rewrite_external_hls_manifest(manifest: str, base_url: str) -> str:
+def rewrite_external_hls_manifest(manifest: str, base_url: str, upstream_cookie: str = "") -> str:
     # Rewrite all URLs in an external HLS manifest (segment lines and URI="..."
     # attributes such as EXT-X-KEY) to route through the signed /proxy/hls/
     # endpoint, enabling cross-origin playback and key override in the player.
     def proxied_uri(value: str) -> str:
         if not value or value.startswith(("data:", "skd:")):
             return value
-        return hls_proxy_path(urljoin(base_url, value))
+        return hls_proxy_path(urljoin(base_url, value), upstream_cookie)
 
     rewritten: list[str] = []
     for line in manifest.splitlines():
@@ -1686,10 +1923,15 @@ def monitor_streams_loop() -> None:
         try:
             with db() as conn:
                 rows = conn.execute("SELECT * FROM streams ORDER BY id DESC").fetchall()
-            for row in rows:
-                check_stream_row_live(row)
         except Exception as exc:
-            print(f"Stream monitor failed: {exc}")
+            print(f"Stream monitor: failed to fetch streams: {exc}", flush=True)
+            time.sleep(STREAM_MONITOR_INTERVAL)
+            continue
+        for row in rows:
+            try:
+                check_stream_row_live(row)
+            except Exception as exc:
+                print(f"Stream monitor: error on stream {row.get('id')}: {exc}", flush=True)
         time.sleep(STREAM_MONITOR_INTERVAL)
 
 
@@ -1697,7 +1939,13 @@ class StreamHallHandler(BaseHTTPRequestHandler):
     server_version = "StreamHall/1.0"
 
     def log_message(self, fmt: str, *args: object) -> None:
-        print(f"{self.address_string()} - {fmt % args}")
+        raw_path = self.path if hasattr(self, "path") else ""
+        path = raw_path.split("?", 1)[0]
+        if path.startswith(("/h/", "/proxy/hls/", "/proxy/hls-manifest/")):
+            return
+        if any(k in raw_path for k in ("viewer_heartbeat", "check_player_stream", "check_stream", "stream_stats_summary")):
+            return
+        print(f"{self.address_string()} - {fmt % args}", flush=True)
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -2503,12 +2751,18 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if cur.rowcount == 0:
             raise AppError("stream_not_found")
         if enabled and row:
-            headers = dict(self.headers)
-            threading.Thread(
-                target=notify_current_live_if_needed,
-                args=(stream_id, headers),
-                daemon=True,
-            ).start()
+            # Reset live_links_json and cancel any pending start timer so the monitor's
+            # next cycle treats all live links as newly-live via the merge window.
+            # Using a single notification path eliminates duplicate-send races.
+            with db() as conn:
+                conn.execute(
+                    "UPDATE stream_probe_states SET live_links_json = '[]' WHERE stream_id = ?",
+                    (stream_id,),
+                )
+            with _pending_start_lock:
+                entry = _pending_start_timers.pop(stream_id, None)
+            if entry:
+                entry[0].cancel()
         self.send_json({"status": "success", "enabled": enabled})
 
     def api_reorder_streams(self) -> None:
@@ -2578,7 +2832,12 @@ class StreamHallHandler(BaseHTTPRequestHandler):
 
     def api_check_stream_url(self) -> None:
         body = self.read_json()
-        result = probe_stream_url(body.get("url", ""), body.get("type", ""), body.get("drmConfigs", body.get("drm_configs", [])))
+        result = probe_stream_url(
+            body.get("url", ""),
+            body.get("type", ""),
+            body.get("drmConfigs", body.get("drm_configs", [])),
+            str(body.get("upstreamCookie", body.get("upstream_cookie", "")) or "").strip(),
+        )
         self.send_json({"status": "success", "data": result})
 
     def api_discover_drm(self) -> None:
@@ -3240,7 +3499,7 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         upstream_url = f"{SRS_HTTP_ORIGIN}{upstream_path}{query}"
         try:
             req = Request(upstream_url, headers={"User-Agent": "StreamHall/1.0"})
-            opener = urlopen(req, timeout=STREAM_PROBE_TIMEOUT) if rewrite_manifest else urlopen(req)
+            opener = urlopen(req, timeout=HLS_PROXY_TIMEOUT) if rewrite_manifest else urlopen(req)
             with opener as resp:
                 if rewrite_manifest:
                     body = resp.read(1024 * 1024)
@@ -3274,14 +3533,28 @@ class StreamHallHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.BAD_GATEWAY)
 
     def proxy_hls_route(self, request_path: str, send_body: bool = True) -> None:
-        # URL format: /proxy/hls/<token>/<base64-encoded-url>
-        # The token is an HMAC of the full target URL; it ensures that only URLs
-        # generated by hls_proxy_path() can be proxied, preventing open-proxy abuse.
+        # URL format: /proxy/hls/<token>/<base64-encoded-url>[/<base64-encoded-cookie-ref>]
+        # When a cookie is needed, the last segment is a server-issued opaque token reference
+        # (token_id.hmac_sig encoded as base64). The actual cookie is stored server-side only
+        # and never appears in the URL, preventing extraction from browser network logs.
         parts = request_path.strip("/").split("/")
-        if len(parts) != 4 or parts[0] != "proxy" or parts[1] != "hls":
+        if parts[:2] != ["proxy", "hls"]:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
-        token, encoded_url = parts[2], parts[3]
+        if len(parts) == 4:
+            token, encoded_url = parts[2], parts[3]
+            cookie_ref = ""
+        elif len(parts) == 5:
+            token, encoded_url, encoded_ref = parts[2], parts[3], parts[4]
+            try:
+                padded = encoded_ref + "=" * (-len(encoded_ref) % 4)
+                cookie_ref = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+            except Exception:
+                self.send_error(HTTPStatus.BAD_REQUEST)
+                return
+        else:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
         try:
             target_url = decode_proxy_target(encoded_url)
         except (ValueError, UnicodeDecodeError):
@@ -3291,49 +3564,80 @@ class StreamHallHandler(BaseHTTPRequestHandler):
         if parsed.scheme not in ("http", "https"):
             self.send_error(HTTPStatus.BAD_REQUEST)
             return
-        if not hmac.compare_digest(token, hls_proxy_url_token(target_url)):
+        if not hmac.compare_digest(token, hls_proxy_url_token(target_url, cookie_ref)):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
+        upstream_cookie = ""
+        if cookie_ref:
+            upstream_cookie = _resolve_proxy_cookie_token(cookie_ref)
+            if not upstream_cookie:
+                # Token not found — server may have restarted; player page needs reload.
+                self.send_error(HTTPStatus.FORBIDDEN)
+                return
         try:
             reject_private_http_url(target_url)
         except AppError:
             self.send_error(HTTPStatus.FORBIDDEN)
             return
 
+        upstream_headers: dict[str, str] = {"User-Agent": "StreamHall/1.0"}
+        if upstream_cookie:
+            upstream_headers["Cookie"] = upstream_cookie
         try:
-            req = Request(target_url, headers={"User-Agent": "StreamHall/1.0"})
-            with urlopen(req, timeout=STREAM_PROBE_TIMEOUT if parsed.path.lower().endswith(".m3u8") else 20) as resp:
-                content_type = resp.headers.get("Content-Type") or mimetypes.guess_type(parsed.path)[0] or "application/octet-stream"
-                is_manifest = parsed.path.lower().endswith(".m3u8") or "mpegurl" in content_type.lower()
-                if is_manifest:
-                    body = resp.read(2 * 1024 * 1024)
-                    content = rewrite_external_hls_manifest(decode_probe_text(body), target_url).encode("utf-8")
-                    self.send_response(HTTPStatus.OK)
-                    self.send_header("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8")
-                    self.send_header("Content-Length", str(len(content)))
-                    self.send_header("Cache-Control", "no-cache")
-                    self.send_header("Access-Control-Allow-Origin", "*")
-                    self.end_headers()
-                    if send_body:
-                        self.wfile.write(content)
-                    return
-
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Cache-Control", "no-cache")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                if not send_body:
-                    return
-                while True:
-                    chunk = resp.read(65536)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-        except HTTPError as exc:
-            self.send_error(HTTPStatus(exc.code) if exc.code in HTTPStatus._value2member_map_ else HTTPStatus.BAD_GATEWAY)
-        except (URLError, TimeoutError, OSError):
+            resp, conn, _scheme, _host, _port = _upstream_fetch(target_url, upstream_headers, HLS_PROXY_TIMEOUT)
+        except (http.client.HTTPException, OSError, TimeoutError):
             self.send_error(HTTPStatus.BAD_GATEWAY)
+            return
+
+        if resp.status >= 400:
+            resp.read()
+            _upstream_conn_return(_scheme, _host, _port, conn)
+            self.send_error(HTTPStatus(resp.status) if resp.status in HTTPStatus._value2member_map_ else HTTPStatus.BAD_GATEWAY)
+            return
+
+        content_type = resp.getheader("Content-Type") or mimetypes.guess_type(parsed.path)[0] or "application/octet-stream"
+        is_manifest = parsed.path.lower().endswith(".m3u8") or "mpegurl" in content_type.lower()
+
+        if is_manifest:
+            body = resp.read(2 * 1024 * 1024)
+            _upstream_conn_return(_scheme, _host, _port, conn)
+            content = rewrite_external_hls_manifest(decode_probe_text(body), target_url, upstream_cookie).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            if send_body:
+                self.wfile.write(content)
+            return
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        if not send_body:
+            resp.read()
+            _upstream_conn_return(_scheme, _host, _port, conn)
+            return
+        conn_returned = False
+        try:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+            _upstream_conn_return(_scheme, _host, _port, conn)
+            conn_returned = True
+        except OSError:
+            pass
+        finally:
+            if not conn_returned:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def proxy_hls_manifest_route(self, request_path: str, send_body: bool = True) -> None:
         # URL format: /proxy/hls-manifest/<token>/<base64-encoded-url>
