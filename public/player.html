@@ -1302,10 +1302,14 @@
                 const hls = new Hls({
                   enableSoftwareAES: !!keyOverride,
                   loader: keyOverride ? CustomLoader : Hls.DefaultConfig.loader,
+                  startLevel: -1,
                   debug: false
                 });
                 hls.loadSource(url);
                 hls.attachMedia(video);
+                // Keep ABR / auto quality active from the start so playback isn't
+                // pinned to the lowest rung when the source (re)loads.
+                hls.on(Hls.Events.MANIFEST_PARSED, () => { hls.currentLevel = -1; });
                 art.hls = hls;
                 art.on('destroy', () => hls.destroy());
               } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -1330,6 +1334,28 @@
             }
           },
           plugins: hlsControlPlugins
+        });
+        // The hls-control plugin labels its quality menu from hls.currentLevel, which
+        // is whatever rung hls.js happens to be on when the player becomes ready
+        // (often the lowest). Re-assert auto mode and refresh the menu so the default
+        // selection shows "Auto" rather than the lowest resolution.
+        playerInstance.on('ready', () => {
+          const root = playerInstance.template?.$player;
+          // Default the resolution menu to its "Auto" (ABR) entry instead of a fixed
+          // rung. The plugin tags each entry with data-value; Auto is value -1. Clicking
+          // it runs the plugin's own onSelect, which puts hls.js in auto mode and marks
+          // Auto as the selected item in both the control bar and the settings panel.
+          const autoItem = root?.querySelector('.art-control-hls-quality .art-selector-item[data-value="-1"]');
+          if (autoItem) autoItem.click();
+          // The native source (视角) control and the plugin resolution control get
+          // inserted in opposite DOM order under live vs archive mode, so their
+          // left/right positions flip. Force the archive layout in both: source
+          // selector on the left, resolution on the right.
+          const sourceCtrl = root?.querySelector('.art-control-quality');
+          const resCtrl = root?.querySelector('.art-control-hls-quality');
+          if (sourceCtrl && resCtrl && sourceCtrl.parentNode === resCtrl.parentNode) {
+            resCtrl.parentNode.insertBefore(sourceCtrl, resCtrl);
+          }
         });
         startPlaybackMonitor(data, password);
       }

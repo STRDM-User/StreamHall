@@ -3153,7 +3153,10 @@
       };
 
       const checkLinkRow = async (row, silent = false) => {
-        if (!row || !row.isConnected || row.dataset.probeActive === '1') return;
+        // Note: no probeActive guard here — a newer check (e.g. triggered by pasting a
+        // cookie while the URL probe is still in flight) must be allowed to start.
+        // The probeToken check below discards any stale/superseded result.
+        if (!row || !row.isConnected) return;
         const statusEl = row.querySelector('.stream-check-status');
         const { url, type } = getRowProbeTarget(row);
         if (!url) {
@@ -4660,6 +4663,8 @@
         div.querySelector('.l-url').addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
         div.querySelector('.l-type').addEventListener('change', () => scheduleLinkRowCheck(div, 0));
         div.querySelector('.l-proxy-mode').addEventListener('change', () => scheduleLinkRowCheck(div, 0));
+        div.querySelector('.l-upstream-cookie')?.addEventListener('input', () => scheduleLinkRowCheck(div));
+        div.querySelector('.l-upstream-cookie')?.addEventListener('blur', () => scheduleLinkRowCheck(div, 0));
         if (url) scheduleLinkRowCheck(div, 250);
         div.querySelector('.link-move-up')?.addEventListener('click', () => moveLinkRowStep(div, -1));
         div.querySelector('.link-move-down')?.addEventListener('click', () => moveLinkRowStep(div, 1));
